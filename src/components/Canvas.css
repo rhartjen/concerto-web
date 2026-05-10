@@ -82,7 +82,7 @@
 .minimap {
   position: absolute;
   bottom: 70px;
-  right: 16px;
+  left: 16px; /* mobile: bottom-left, away from the centered color picker */
   z-index: 20;
   border-radius: 6px;
   overflow: hidden;
@@ -100,6 +100,8 @@
 @media (min-width: 768px) {
   .minimap {
     bottom: 16px;
+    left: auto;
+    right: 16px; /* desktop: bottom-right, sidebar is on the right */
   }
 }
 
