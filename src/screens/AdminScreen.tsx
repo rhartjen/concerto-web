@@ -113,20 +113,32 @@ function NoCanvas() {
 // ── Canvases tab ──────────────────────────────────────────────────────────────
 
 function CanvasesTab({ onSelect }: { onSelect: (id: string, name: string) => void }) {
-  const [rows,     setRows]     = useState<CanvasRow[]>([]);
-  const [loading,  setLoading]  = useState(true);
-  const [newName,  setNewName]  = useState('');
-  const [newSlug,  setNewSlug]  = useState('');
-  const [creating, setCreating] = useState(false);
+  const [rows,      setRows]      = useState<CanvasRow[]>([]);
+  const [loading,   setLoading]   = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [newName,   setNewName]   = useState('');
+  const [newSlug,   setNewSlug]   = useState('');
+  const [creating,  setCreating]  = useState(false);
   const [createErr, setCreateErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setFetchError(null);
     const [cvRes, drRes, usRes] = await Promise.all([
       admin.from('canvases').select('id, name, slug, is_active, created_at').order('created_at'),
       admin.from('drawings').select('canvas_id').eq('is_deleted', false),
       admin.from('users').select('canvas_id').not('canvas_id', 'is', null),
     ]);
+
+    console.log('[admin] canvases fetch', { data: cvRes.data, error: cvRes.error });
+    if (drRes.error) console.error('[admin] drawings count fetch failed', drRes.error);
+    if (usRes.error) console.error('[admin] users count fetch failed', usRes.error);
+
+    if (cvRes.error) {
+      setFetchError(`Failed to load canvases: ${cvRes.error.message} (code: ${cvRes.error.code})`);
+      setLoading(false);
+      return;
+    }
 
     const dCounts: Record<string, number> = {};
     for (const d of drRes.data ?? []) {
@@ -178,6 +190,7 @@ function CanvasesTab({ onSelect }: { onSelect: (id: string, name: string) => voi
 
   return (
     <div className="a-content">
+      {fetchError && <p className="a-hint a-hint--error">{fetchError}</p>}
       <table className="a-table">
         <thead>
           <tr>
@@ -190,6 +203,11 @@ function CanvasesTab({ onSelect }: { onSelect: (id: string, name: string) => voi
           </tr>
         </thead>
         <tbody>
+          {rows.length === 0 && !fetchError && (
+            <tr><td colSpan={6} style={{ textAlign: 'center', opacity: 0.5 }}>
+              no canvases found — create one below
+            </td></tr>
+          )}
           {rows.map((c) => (
             <tr key={c.id}>
               <td>{c.name}</td>
