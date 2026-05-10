@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Concerto</title>
+    <script>
+      // GitHub Pages SPA redirect — rafgraph/spa-github-pages pattern.
+      //
+      // GitHub serves this file when a path has no matching file on the
+      // gh-pages branch. We encode the original URL as a query string and
+      // redirect to the app root; index.html then decodes it and calls
+      // history.replaceState so the browser and React Router see the real path.
+      //
+      // segmentCount = 1 because the app is served under one path segment:
+      //   https://rhartjen.github.io/concerto-web/...
+      //                              └── 1 segment ─┘
+      var segmentCount = 1;
+      var l = window.location;
+      l.replace(
+        l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') +
+        l.pathname.split('/').slice(0, 1 + segmentCount).join('/') + '/?/' +
+        l.pathname.slice(1).split('/').slice(segmentCount).join('/')
+          .replace(/&/g, '~and~') +
+        (l.search ? '&' + l.search.slice(1).replace(/&/g, '~and~') : '') +
+        l.hash
+      );
+    </script>
+  </head>
+  <body></body>
+</html>
