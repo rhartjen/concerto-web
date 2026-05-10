@@ -59,23 +59,36 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 // Uses setState directly — not a hook.
 
 async function initSession(): Promise<void> {
+  console.log('[session:1] initSession start');
+
   // ── Step 1: Auth ─────────────────────────────────────────────────────────
-  // Separated into its own try/catch: if auth itself fails there is no userId
-  // and we cannot show the modal meaningfully, so we just unblock the UI.
   let authUserId: string;
   try {
-    let { data: { session } } = await supabase.auth.getSession();
+    const sessionResult = await supabase.auth.getSession();
+    console.log('[session:2] getSession result:', JSON.stringify({
+      session:   sessionResult.data.session ? { user_id: sessionResult.data.session.user.id } : null,
+      error:     sessionResult.error?.message ?? null,
+    }));
+
+    let session = sessionResult.data.session;
 
     if (!session) {
-      const { data, error } = await supabase.auth.signInAnonymously();
-      if (error) throw error;
-      session = data.session;
+      console.log('[session:3] no existing session — calling signInAnonymously');
+      const anonResult = await supabase.auth.signInAnonymously();
+      console.log('[session:4] signInAnonymously full response:', JSON.stringify({
+        session:   anonResult.data.session  ? { user_id: anonResult.data.session.user.id } : null,
+        user:      anonResult.data.user     ? { id: anonResult.data.user.id }               : null,
+        error:     anonResult.error         ? { message: anonResult.error.message, status: (anonResult.error as { status?: number }).status } : null,
+      }));
+      if (anonResult.error) throw anonResult.error;
+      session = anonResult.data.session;
     }
 
     if (!session) throw new Error('No session returned after sign-in');
     authUserId = session.user.id;
+    console.log('[session:5] auth resolved — authUserId:', authUserId);
   } catch (err) {
-    console.error('[session] Auth failed:', err);
+    console.error('[session] Auth failed — setting isLoaded:true WITHOUT needsUsername. Modal will NOT appear.', err);
     useSessionStore.setState({ isLoaded: true });
     return;
   }
@@ -91,12 +104,13 @@ async function initSession(): Promise<void> {
     console.error('[session] Failed to load canvas:', canvasError.message);
   } else {
     useSessionStore.setState({ canvasId: canvas.id });
+    console.log('[session:6] canvasId set:', canvas.id);
   }
 
   // ── Step 3: User row ─────────────────────────────────────────────────────
-  // Prefer the user_id saved to localStorage from a prior visit. Falls back
-  // to the current auth UID for brand-new sessions.
-  const savedUserId = localStorage.getItem(USER_ID_KEY) ?? authUserId;
+  const rawLocalStorageValue = localStorage.getItem(USER_ID_KEY);
+  const savedUserId          = rawLocalStorageValue ?? authUserId;
+  console.log('[session:7] localStorage raw value:', rawLocalStorageValue, '| savedUserId used for DB query:', savedUserId, '| authUserId:', authUserId);
 
   const { data: user, error: userError } = await supabase
     .from('users')
@@ -104,16 +118,20 @@ async function initSession(): Promise<void> {
     .eq('id', savedUserId)
     .maybeSingle();
 
+  console.log('[session:8] users query result:', JSON.stringify({
+    user:      user ?? null,
+    userError: userError?.message ?? null,
+    savedUserId,
+  }));
+
   if (userError) {
-    // DB error (e.g. schema not yet applied, RLS policy). We have a valid auth
-    // session, so show the modal anyway — the insert attempt will surface the
-    // real error if the table still doesn't exist.
-    console.error('[session] Failed to load user:', userError.message);
+    console.error('[session] DB error on user lookup — showing modal. userId:', authUserId);
     useSessionStore.setState({ userId: authUserId, needsUsername: true, isLoaded: true });
     return;
   }
 
   if (user) {
+    console.log('[session:9] returning user found — modal will NOT appear. username:', user.username);
     localStorage.setItem(USER_ID_KEY, user.id);
     useSessionStore.setState({
       userId:   user.id,
@@ -121,6 +139,7 @@ async function initSession(): Promise<void> {
       isLoaded: true,
     });
   } else {
+    console.log('[session:9] no user row — setting needsUsername:true. Modal SHOULD appear.');
     useSessionStore.setState({
       userId:        authUserId,
       needsUsername: true,

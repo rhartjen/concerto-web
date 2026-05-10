@@ -5,19 +5,27 @@ import './UsernameModal.css';
 const USER_ID_KEY = 'concerto_user_id';
 const VALID = /^[a-zA-Z0-9_]{3,20}$/;
 
+// ── DEBUG: set true to force the modal open regardless of store state ─────────
+const DEBUG_FORCE_MODAL = false;
+
 export default function UsernameModal() {
   const { isLoaded, needsUsername, setUsername } = useSessionStore();
   const isReturning = Boolean(localStorage.getItem(USER_ID_KEY));
+
+  console.log('[modal] render — isLoaded:', isLoaded, '| needsUsername:', needsUsername, '| DEBUG_FORCE_MODAL:', DEBUG_FORCE_MODAL);
 
   const [value,   setValue]   = useState('');
   const [error,   setError]   = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Block the canvas with an opaque layer while the session is initialising so
-  // the modal can't be skipped by a fast render before needsUsername is set.
-  if (!isLoaded) return <div className="username-backdrop" />;
-  if (!needsUsername) return null;
+  if (DEBUG_FORCE_MODAL) {
+    console.log('[modal] DEBUG_FORCE_MODAL=true — rendering modal unconditionally');
+    // fall through to the JSX below
+  } else {
+    if (!isLoaded) { console.log('[modal] → returning backdrop (not loaded yet)'); return <div className="username-backdrop" />; }
+    if (!needsUsername) { console.log('[modal] → returning null (needsUsername is false)'); return null; }
+  }
 
   function validate(v: string): string | null {
     if (v.length < 3)          return 'At least 3 characters';
