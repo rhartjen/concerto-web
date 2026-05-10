@@ -1,0 +1,100 @@
+.tempo-bar {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px;
+  background: rgba(10, 13, 32, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 32px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  pointer-events: auto;
+  white-space: nowrap;
+}
+
+.tempo-bpm {
+  font-family: 'Space Mono', monospace;
+  font-size: 12px;
+  color: #3ED4C4;
+  min-width: 28px;
+  text-align: right;
+  letter-spacing: 0.5px;
+}
+
+.tempo-unit {
+  font-family: 'Space Mono', monospace;
+  font-size: 8px;
+  color: #363c62;
+  letter-spacing: 1.5px;
+}
+
+/* ── Slider ─────────────────────────────────────────────────────────────────── */
+.tempo-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 120px;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+
+.tempo-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #3ED4C4;
+  cursor: pointer;
+  transition: transform 0.1s;
+}
+
+.tempo-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+.tempo-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #3ED4C4;
+  border: none;
+  cursor: pointer;
+}
+
+/* ── Tap button ─────────────────────────────────────────────────────────────── */
+.tempo-tap {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-family: 'Space Mono', monospace;
+  font-size: 8px;
+  letter-spacing: 1.5px;
+  color: #363c62;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.tempo-tap:hover {
+  color: #3ED4C4;
+  border-color: rgba(61, 212, 196, 0.35);
+}
+
+.tempo-tap:active {
+  color: #3ED4C4;
+  border-color: rgba(61, 212, 196, 0.6);
+}
+
+/* Desktop: center within the canvas area (excluding the 280px sidebar) */
+@media (min-width: 768px) {
+  .tempo-bar {
+    left: calc((100vw - 280px) / 2);
+  }
+}

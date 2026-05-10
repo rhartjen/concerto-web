@@ -1,0 +1,24 @@
+{
+  "name": "Concerto",
+  "short_name": "Concerto",
+  "description": "Draw to compose music on an infinite canvas",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#07091a",
+  "theme_color": "#07091a",
+  "icons": [
+    {
+      "src": "/icon-180.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

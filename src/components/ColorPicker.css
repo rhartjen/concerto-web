@@ -1,0 +1,63 @@
+.color-picker {
+  position: fixed;
+  bottom: 68px; /* clears the 60px mobile panel handle */
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 15;
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px;
+  background: rgba(7, 9, 26, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 32px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  pointer-events: auto;
+}
+
+.color-swatch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px;
+}
+
+.swatch-circle {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  box-sizing: border-box;
+  transition: border-color 0.15s, transform 0.15s;
+  flex-shrink: 0;
+}
+
+.color-swatch--active .swatch-circle {
+  border-color: rgba(255, 255, 255, 0.85);
+  transform: scale(1.18);
+}
+
+.swatch-label {
+  font-size: 7px;
+  font-family: 'Space Mono', monospace;
+  letter-spacing: 0.4px;
+  color: #363c62;
+  transition: color 0.15s;
+  line-height: 1;
+}
+
+.color-swatch--active .swatch-label {
+  color: #d8dcf0;
+}
+
+/* Desktop: center within the canvas area (excluding the 280px sidebar) */
+@media (min-width: 768px) {
+  .color-picker {
+    bottom: 24px;
+    left: calc((100vw - 280px) / 2);
+  }
+}

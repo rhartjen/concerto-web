@@ -1,0 +1,336 @@
+/* ── Reset / shell ───────────────────────────────────────────────────────── */
+
+.a-shell,
+.a-gate {
+  min-height: 100vh;
+  background: #060816;
+  color: #c8cee8;
+  font-family: 'Space Mono', monospace;
+  font-size: 13px;
+}
+
+/* ── Password gate ───────────────────────────────────────────────────────── */
+
+.a-gate {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.a-gate-form {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  width: 300px;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+
+.a-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 24px;
+  height: 52px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+}
+
+.a-wordmark {
+  font-size: 13px;
+  font-weight: 700;
+  color: #3ED4C4;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  flex: 1;
+}
+
+.a-canvas-chip {
+  font-size: 11px;
+  color: #41496e;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 20px;
+  padding: 3px 10px;
+  letter-spacing: 0.5px;
+}
+
+/* ── Tabs ────────────────────────────────────────────────────────────────── */
+
+.a-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 12px 24px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.a-tab {
+  padding: 8px 18px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  font-family: 'Space Mono', monospace;
+  font-size: 12px;
+  color: #41496e;
+  letter-spacing: 0.8px;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.a-tab--active {
+  color: #3ED4C4;
+  border-bottom-color: #3ED4C4;
+}
+
+.a-tab:hover:not(.a-tab--active) {
+  color: #8892b0;
+}
+
+/* ── Content area ────────────────────────────────────────────────────────── */
+
+.a-content {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  overflow-y: auto;
+  max-height: calc(100vh - 52px - 45px); /* minus header + tabs */
+}
+
+.a-loading {
+  padding: 32px 24px;
+  color: #2e3560;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+}
+
+/* ── Toolbar ─────────────────────────────────────────────────────────────── */
+
+.a-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.a-toolbar-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.a-count {
+  font-size: 12px;
+  color: #41496e;
+  letter-spacing: 0.5px;
+}
+
+/* ── Table ───────────────────────────────────────────────────────────────── */
+
+.a-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.a-table th {
+  text-align: left;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #2e3560;
+  text-transform: uppercase;
+  padding: 0 12px 10px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.a-table td {
+  padding: 10px 12px 10px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  color: #8892b0;
+  vertical-align: middle;
+}
+
+.a-table tr:last-child td {
+  border-bottom: none;
+}
+
+.a-table tr:hover td {
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.a-cell-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.a-ts {
+  color: #2e3560;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.a-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.a-code {
+  font-family: 'Space Mono', monospace;
+  font-size: 11px;
+  color: #41496e;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+/* ── Sub-panel (create form) ─────────────────────────────────────────────── */
+
+.a-subpanel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.a-subpanel-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #2e3560;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.a-form-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* ── Inputs ──────────────────────────────────────────────────────────────── */
+
+.a-input {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  color: #c8cee8;
+  font-family: 'Space Mono', monospace;
+  font-size: 13px;
+  padding: 10px 14px;
+  outline: none;
+  transition: border-color 0.15s;
+  width: 280px;
+}
+
+.a-input--sm {
+  width: 160px;
+  padding: 7px 10px;
+  font-size: 12px;
+}
+
+.a-input:focus {
+  border-color: rgba(62, 212, 196, 0.4);
+}
+
+.a-input--error {
+  border-color: rgba(255, 77, 94, 0.5);
+}
+
+.a-input::placeholder {
+  color: #2a3050;
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+
+.a-btn {
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: #8892b0;
+  font-family: 'Space Mono', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: opacity 0.12s;
+  white-space: nowrap;
+}
+
+.a-btn:hover:not(:disabled) {
+  opacity: 0.75;
+}
+
+.a-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.a-btn--primary {
+  background: rgba(62, 212, 196, 0.12);
+  border-color: rgba(62, 212, 196, 0.3);
+  color: #3ED4C4;
+  padding: 10px 24px;
+  font-size: 13px;
+}
+
+.a-btn--danger {
+  background: rgba(255, 77, 94, 0.08);
+  border-color: rgba(255, 77, 94, 0.25);
+  color: #ff4d5e;
+}
+
+.a-btn--green {
+  background: rgba(62, 212, 196, 0.06);
+  border-color: rgba(62, 212, 196, 0.2);
+  color: #3ED4C4;
+}
+
+.a-btn--ghost {
+  background: none;
+  border-color: transparent;
+  color: #41496e;
+}
+
+/* ── Badges ──────────────────────────────────────────────────────────────── */
+
+.a-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 20px;
+}
+
+.a-badge--green {
+  color: #3ED4C4;
+  background: rgba(62, 212, 196, 0.08);
+}
+
+.a-badge--red {
+  color: #ff4d5e;
+  background: rgba(255, 77, 94, 0.08);
+}
+
+/* ── Hints ───────────────────────────────────────────────────────────────── */
+
+.a-hint {
+  font-size: 11px;
+  color: #41496e;
+  letter-spacing: 0.3px;
+}
+
+.a-hint--error {
+  color: #ff4d5e;
+}

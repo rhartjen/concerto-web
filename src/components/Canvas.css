@@ -1,0 +1,147 @@
+.canvas-container {
+  position: fixed;
+  inset: 0;
+  background-color: #07091a;
+  overflow: hidden;
+  /* Disable all native touch handling so pointer / wheel events come to us */
+  touch-action: none;
+  overscroll-behavior: none;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: crosshair;
+}
+
+/* ── Dot grid ─────────────────────────────────────────────────────────────── */
+/* x/y/cell/dot-r are updated imperatively in applyTransform() */
+.canvas-bg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(
+    circle,
+    #141c3a var(--dot-r, 1.4px),
+    transparent var(--dot-r, 1.4px)
+  );
+  background-size: var(--grid-cell, 40px) var(--grid-cell, 40px);
+  background-position: var(--grid-x, 0px) var(--grid-y, 0px);
+}
+
+/* ── Nebula shimmer orbs ──────────────────────────────────────────────────── */
+.canvas-orbs {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.shimmer-orb {
+  position: absolute;
+  pointer-events: none;
+}
+
+/* ── Transformed content layer ───────────────────────────────────────────── */
+.canvas-content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  /* transform and transform-origin are set once in React */
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+
+.canvas-drawing-svg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+/* ── Minimap ─────────────────────────────────────────────────────────────── */
+.minimap {
+  position: absolute;
+  bottom: 70px;
+  right: 16px;
+  z-index: 20;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  cursor: crosshair;
+  pointer-events: auto;
+  opacity: 0.75;
+  transition: opacity 0.2s;
+}
+
+.minimap:hover {
+  opacity: 1;
+}
+
+@media (min-width: 768px) {
+  .minimap {
+    bottom: 16px;
+  }
+}
+
+/* ── Empty state ──────────────────────────────────────────────────────────── */
+.canvas-empty-state {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding-bottom: 80px;
+  pointer-events: none;
+}
+
+.canvas-empty-hint {
+  font-size: 13px;
+  font-family: 'Space Mono', monospace;
+  color: #3ed4c4;
+  opacity: 0.38;
+  letter-spacing: 2px;
+}
+
+/* ── Canvas nav ───────────────────────────────────────────────────────────── */
+.canvas-nav {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 10;
+  display: flex;
+  gap: 8px;
+  pointer-events: auto;
+}
+
+.canvas-nav-btn {
+  background: rgba(10, 13, 32, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-family: 'Space Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  color: #363c62;
+  cursor: pointer;
+  text-decoration: none;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: color 0.15s;
+}
+
+.canvas-nav-btn:hover {
+  color: #3ed4c4;
+}
+
+/* ── Desktop: leave room for the sidebar ─────────────────────────────────── */
+@media (min-width: 768px) {
+  .canvas-container {
+    right: 280px;
+  }
+
+  /* Move nav to top-left so it doesn't overlap the sidebar */
+  .canvas-nav {
+    right: auto;
+    left: 16px;
+  }
+}
