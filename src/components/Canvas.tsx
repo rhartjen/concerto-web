@@ -389,6 +389,7 @@ export default function Canvas({ children }: CanvasProps) {
     const target   = findGroupTarget(ownDrawings, incoming);
 
     if (target) {
+      console.log(`[canvas] MERGE → drawing ${target.id} (own drawings in store: ${ownDrawings.length})`);
       // Merge: append path, expand bbox, re-map sound to the combined geometry.
       const mergedPath  = target.path + ' ' + pathData;
       const mergedBBox  = unionBoundingBox(target.boundingBox, bbox);
@@ -409,6 +410,7 @@ export default function Canvas({ children }: CanvasProps) {
         color: strokeColor,
       });
     } else {
+      console.log(`[canvas] NEW drawing (own drawings in store: ${ownDrawings.length})`);
       const id   = crypto.randomUUID();
       const base = {
         id,

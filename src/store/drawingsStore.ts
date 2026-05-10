@@ -273,7 +273,14 @@ async function startSync(canvasId: string): Promise<void> {
   if (error) {
     console.error('[drawings] initial load failed:', error.message);
   } else {
-    useDrawingsStore.setState({ drawings: (data ?? []).map(rowToDrawing) });
+    const dbDrawings = (data ?? []).map(rowToDrawing);
+    useDrawingsStore.setState((state) => {
+      // Merge: keep optimistic drawings already in store (own strokes drawn during
+      // the async fetch), and append only DB rows not yet present locally.
+      const existingIds = new Set(state.drawings.map((d) => d.id));
+      const newFromDB   = dbDrawings.filter((d) => !existingIds.has(d.id));
+      return { drawings: [...state.drawings, ...newFromDB] };
+    });
   }
 
   // Realtime subscription for live canvas updates.
