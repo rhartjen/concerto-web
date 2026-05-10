@@ -228,15 +228,29 @@ export const useDrawingsStore = create<DrawingsState>((set, get) => ({
       drawings: state.drawings.filter((d) => d.id !== id),
     }));
 
-    supabase.from('drawings').update({ is_deleted: true })
-      .eq('id', id)
-      .then(({ error }) => {
-        if (!error) return;
-        // Rollback: restore the drawing so it doesn't silently reappear on reload.
-        console.error('[drawings] soft-delete failed:', error.message);
-        useDrawingsStore.setState((s) => ({ drawings: [...s.drawings, drawing] }));
-        useToastStore.getState().showToast('Failed to delete drawing');
+    void (async () => {
+      // Diagnostic: confirm auth session matches ownership before the call.
+      const { data: { user } } = await supabase.auth.getUser();
+      console.log('[drawings] soft-delete auth check', {
+        authUid:       user?.id,
+        drawingUserId: drawing.userId,
+        storeUserId:   userId,
+        match:         user?.id === drawing.userId,
       });
+
+      const { error } = await supabase
+        .from('drawings')
+        .update({ is_deleted: true })
+        .eq('id', id)
+        .eq('user_id', userId);
+
+      if (!error) return;
+
+      // Rollback: restore the drawing so it doesn't silently reappear on reload.
+      console.error('[drawings] soft-delete failed', error);
+      useDrawingsStore.setState((s) => ({ drawings: [...s.drawings, drawing] }));
+      useToastStore.getState().showToast('Failed to delete drawing');
+    })();
   },
 
   toggleHidden: (id) => {
