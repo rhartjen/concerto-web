@@ -41,7 +41,12 @@ let reverbReturn: GainNode               | null = null;
 
 // Per-drawing gain nodes persist between chord calls so the slider can ramp
 // their gain smoothly without re-creating the node on every tick.
-const drawingGains = new Map<string, GainNode>();
+const drawingGains  = new Map<string, GainNode>();
+// Mirror of the last normalized volume set for each drawing (0–1).
+// Used by setViewportGain to compute effective gain = volume × viewportGain.
+const drawingVolumes = new Map<string, number>();
+// Viewport gain per drawing: 1 = fully audible, 0 = silenced by viewport mode.
+const viewportGains  = new Map<string, number>();
 
 // Tracks the previous frequency played by the lead synth for portamento.
 let lastLeadFreq = 0;
@@ -96,6 +101,8 @@ export function unlockAudio(): void {
     ctx = new AudioContext();
     masterComp = reverbNode = reverbReturn = null; // rebuild graph for new context
     drawingGains.clear();
+    drawingVolumes.clear();
+    viewportGains.clear();
     lastLeadFreq = 0;
   }
   if (ctx.state === 'suspended') ctx.resume().catch(() => {});
@@ -105,23 +112,58 @@ export function unlockAudio(): void {
 function getOrCreateDrawingGain(id: string, initialGain: number): GainNode {
   let g = drawingGains.get(id);
   if (!g) {
+    const vpGain    = viewportGains.get(id) ?? 1;
+    const effective = Math.max(0, Math.min(1, initialGain * vpGain));
     g = ctx!.createGain();
-    g.gain.value = Math.max(0, Math.min(1, initialGain));
+    g.gain.value = effective;
     g.connect(masterComp!);
     drawingGains.set(id, g);
+    drawingVolumes.set(id, initialGain);
   }
   return g;
 }
 
 export function setDrawingVolume(id: string, normalizedVolume: number): void {
   if (!ctx || !masterComp) return;
+  drawingVolumes.set(id, normalizedVolume);
+  const vpGain = viewportGains.get(id) ?? 1;
   const g = getOrCreateDrawingGain(id, normalizedVolume);
-  g.gain.setTargetAtTime(Math.max(0, Math.min(1, normalizedVolume)), ctx.currentTime, 0.01);
+  g.gain.setTargetAtTime(
+    Math.max(0, Math.min(1, normalizedVolume * vpGain)),
+    ctx.currentTime, 0.01,
+  );
+}
+
+// Fade a drawing's gain to `gain` (0 = silent, 1 = full) over ~100 ms.
+// Does not touch isMuted — mute state is preserved independently.
+export function setViewportGain(id: string, gain: number): void {
+  const prev = viewportGains.get(id) ?? 1;
+  if (Math.abs(gain - prev) < 0.001) return;
+  viewportGains.set(id, gain);
+  if (!ctx || !masterComp) return;
+  const vol = drawingVolumes.get(id) ?? 0.7;
+  const g = getOrCreateDrawingGain(id, vol);
+  // timeConstant 0.033 s → ~95% of target in 100 ms.
+  g.gain.setTargetAtTime(Math.max(0, Math.min(1, vol * gain)), ctx.currentTime, 0.033);
+}
+
+// Restore all viewport-silenced gains to their individual volume levels.
+// Called when viewport mode is turned off.
+export function resetViewportGains(): void {
+  if (!ctx || !masterComp) { viewportGains.clear(); return; }
+  for (const [id] of viewportGains) {
+    const vol = drawingVolumes.get(id) ?? 0.7;
+    const g   = drawingGains.get(id);
+    if (g) g.gain.setTargetAtTime(Math.max(0, Math.min(1, vol)), ctx.currentTime, 0.033);
+  }
+  viewportGains.clear();
 }
 
 export function removeDrawingGain(id: string): void {
   const g = drawingGains.get(id);
   if (g) { try { g.disconnect(); } catch { /* already gone */ } drawingGains.delete(id); }
+  drawingVolumes.delete(id);
+  viewportGains.delete(id);
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -381,8 +423,8 @@ const PAD_DETUNE = [-7, 7] as const;
 
 function synthPad(ac: AudioContext, dest: AudioNode, freqs: number[], duration: number, peak: number): void {
   const now        = ac.currentTime;
-  const attackTime = 0.40;
-  const releaseAt  = Math.max(now + attackTime + 0.1, now + duration - 0.60);
+  const attackTime = 0.28;
+  const releaseAt  = Math.max(now + attackTime + 0.1, now + duration - 0.42);
   const hpDest     = addHpf(ac, dest);
 
   const lpf = ac.createBiquadFilter();
@@ -593,8 +635,8 @@ const VOCAL_FORMANTS = [
 
 function synthVocal(ac: AudioContext, dest: AudioNode, freqs: number[], duration: number, peak: number): void {
   const now       = ac.currentTime;
-  const attackEnd = now + 0.60;
-  const releaseAt = Math.max(attackEnd + 0.1, now + duration - 0.80);
+  const attackEnd = now + 0.42;
+  const releaseAt = Math.max(attackEnd + 0.1, now + duration - 0.56);
   const hpDest    = addHpf(ac, dest);
 
   for (const baseFreq of freqs) {

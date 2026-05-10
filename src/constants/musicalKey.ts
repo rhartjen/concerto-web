@@ -17,10 +17,10 @@ export type ScaleName = keyof typeof SCALE_INTERVALS;
 // ── Global tonality — change these two lines to retune the entire canvas ──────
 
 /** Root note as semitone offset from C. 0=C  2=D  4=E  5=F  7=G  9=A  11=B */
-export const GLOBAL_KEY = 0; // C
+export const GLOBAL_KEY = 9; // A
 
 // Explicit readonly number[] annotation so indexOf() accepts any number at call sites.
-export const GLOBAL_SCALE: readonly number[] = SCALE_INTERVALS['major']; // C major
+export const GLOBAL_SCALE: readonly number[] = SCALE_INTERVALS['pentatonic minor']; // A minor pentatonic: A C D E G
 
 // ── Utility ───────────────────────────────────────────────────────────────────
 

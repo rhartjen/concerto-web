@@ -1,12 +1,23 @@
 import { useEffect, useRef } from 'react';
 import type { InstrumentName } from '../constants/instrumentMap';
+import { MAX_SIMULTANEOUS_MELODIC } from '../constants/limits';
 import { useDrawingsStore } from '../store/drawingsStore';
 import { useTempoStore } from '../store/tempoStore';
+import { useViewportStore } from '../store/useViewportStore';
 import { playChord, unlockAudio } from '../utils/audioEngine';
 
-const CHORD_DURATION    = 1.9;
+const CHORD_DURATION    = 1.33;
 const MAX_OFFSET_MS     = 700;
 const MAX_VOICES        = 5;
+
+const PERCUSSION: ReadonlySet<InstrumentName> = new Set([
+  'kick drum', 'snare drum', 'hi-hat',
+]);
+
+function freqToMidi(hz: number): number {
+  return 69 + 12 * Math.log2(hz / 440);
+}
+
 const LOOP_VOLUME       = 0.45;
 const CANVAS_LEFT       = -2000;
 const CANVAS_RIGHT      = 2000;
@@ -118,13 +129,46 @@ export function useAmbientLoop(): void {
       const maxOff  = Math.min(MAX_OFFSET_MS, Math.round(beatMs * 0.4));
 
       const { drawings } = useDrawingsStore.getState();
-      const active = drawings.filter((d) => d.isActive && !d.isMuted);
+      const { viewportMode, visibleDrawingIds } = useViewportStore.getState();
+      const active = drawings.filter((d) => {
+        if (!d.isActive || d.isMuted) return false;
+        if (viewportMode && !visibleDrawingIds.has(d.id)) return false;
+        return true;
+      });
 
       if (active.length > 0) {
         const firing = active.filter((d) =>
           shouldFire(d.soundMapping.instrument, t, d.beatPosition),
         );
-        const voices = firing.length <= MAX_VOICES ? firing : sample(firing, MAX_VOICES);
+
+        // Percussion always plays; melodic is capped and voice-led.
+        const percFiring    = firing.filter((d) => PERCUSSION.has(d.soundMapping.instrument));
+        const melodicFiring = firing.filter((d) => !PERCUSSION.has(d.soundMapping.instrument));
+
+        // Cap melodic voices at MAX_SIMULTANEOUS_MELODIC, preferring those that
+        // fire earliest in the measure (lowest beatPosition = most on-beat).
+        const cappedMelodic = melodicFiring
+          .slice()
+          .sort((a, b) => a.beatPosition - b.beatPosition)
+          .slice(0, MAX_SIMULTANEOUS_MELODIC);
+
+        // Voice leading: sort by root frequency, reject any drawing whose root
+        // is within 3 semitones of the previously accepted note to prevent clashes.
+        const sortedByFreq = cappedMelodic
+          .slice()
+          .sort((a, b) => (a.soundMapping.frequency[0] ?? 0) - (b.soundMapping.frequency[0] ?? 0));
+        const voicedMelodic: typeof sortedByFreq = [];
+        let lastMidi = -Infinity;
+        for (const d of sortedByFreq) {
+          const rootMidi = freqToMidi(d.soundMapping.frequency[0] ?? 440);
+          if (rootMidi - lastMidi >= 3) {
+            voicedMelodic.push(d);
+            lastMidi = rootMidi;
+          }
+        }
+
+        const candidates = [...percFiring, ...voicedMelodic];
+        const voices = candidates.length <= MAX_VOICES ? candidates : sample(candidates, MAX_VOICES);
 
         for (const drawing of voices) {
           const inst    = drawing.soundMapping.instrument;

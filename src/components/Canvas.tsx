@@ -9,7 +9,10 @@ import { mapDrawingToSound } from '../utils/soundMapping';
 import { assignBeatPosition } from '../utils/beatPosition';
 import { findGroupTarget, unionBoundingBox } from '../utils/strokeGrouping';
 import { useAmbientLoop } from '../hooks/useAmbientLoop';
+import { useViewportAudio } from '../hooks/useViewportAudio';
 import { unlockAudio } from '../utils/audioEngine';
+import { useViewportStore } from '../store/useViewportStore';
+import { updateViewportTransform } from '../utils/viewportState';
 import { INSTRUMENT_MAP, getInstrumentForColor } from '../constants/instrumentMap';
 import { CANVAS_WIDTH, CANVAS_HEIGHT } from '../constants/limits';
 import ColorPicker from './ColorPicker';
@@ -268,6 +271,22 @@ const Minimap = React.memo(function Minimap({
   );
 });
 
+// ─── ViewportIcon ─────────────────────────────────────────────────────────────
+// Crop-corner frame symbol — indicates "viewport mode".
+function ViewportIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden>
+      <path
+        d="M1 4.5V1.5A.5.5 0 0 1 1.5 1H4.5M8.5 1h3a.5.5 0 0 1 .5.5V4.5M12 8.5v3a.5.5 0 0 1-.5.5H8.5M4.5 12H1.5a.5.5 0 0 1-.5-.5V8.5"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 // ─── Canvas ───────────────────────────────────────────────────────────────────
 interface CanvasProps {
   children?: React.ReactNode;
@@ -275,6 +294,10 @@ interface CanvasProps {
 
 export default function Canvas({ children }: CanvasProps) {
   useAmbientLoop();
+  useViewportAudio();
+
+  const viewportMode    = useViewportStore((s) => s.viewportMode);
+  const setViewportMode = useViewportStore((s) => s.setViewportMode);
 
   // ── Transform state (refs → zero re-render overhead per frame) ────────────
   const txRef    = useRef(0);
@@ -348,6 +371,9 @@ export default function Canvas({ children }: CanvasProps) {
       bgRef.current.style.setProperty('--grid-y',   `${gy}px`);
       bgRef.current.style.setProperty('--dot-r',    `${dotR}px`);
     }
+
+    // Publish viewport transform for useViewportAudio and useAmbientLoop.
+    updateViewportTransform(txRef.current, tyRef.current, scaleRef.current, vw, vh);
 
     // Update minimap viewport rect imperatively to avoid React re-renders.
     const r = viewportRectRef.current;
@@ -748,7 +774,7 @@ export default function Canvas({ children }: CanvasProps) {
   return (
     <div
       ref={containerRef}
-      className="canvas-container"
+      className={`canvas-container${viewportMode ? ' canvas-container--viewport' : ''}`}
       onContextMenu={(e) => e.preventDefault()}
     >
       {/* Dot grid — screen-fixed, pans via CSS custom props */}
@@ -821,6 +847,14 @@ export default function Canvas({ children }: CanvasProps) {
 
       {/* stopPropagation prevents these clicks from reaching the canvas pointer listeners */}
       <nav className="canvas-nav" onPointerDown={(e) => e.stopPropagation()}>
+        <button
+          className={`canvas-nav-btn${viewportMode ? ' canvas-nav-btn--active' : ''}`}
+          onClick={() => setViewportMode(!viewportMode)}
+          aria-label={viewportMode ? 'Disable viewport mode' : 'Enable viewport mode'}
+          title={viewportMode ? 'Viewport mode on' : 'Viewport mode off'}
+        >
+          <ViewportIcon />
+        </button>
         <Link to="/chords"   className="canvas-nav-btn">CHORDS</Link>
         <Link to="/discover" className="canvas-nav-btn">DISCOVER</Link>
       </nav>

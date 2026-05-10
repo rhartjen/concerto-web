@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDrawingsStore, type DrawingObject } from '../store/drawingsStore';
 import { useSessionStore } from '../store/sessionStore';
+import { useViewportStore } from '../store/useViewportStore';
 import { setDrawingVolume, removeDrawingGain } from '../utils/audioEngine';
 import './DrawingPanel.css';
 
@@ -243,12 +244,18 @@ export default function DrawingPanel() {
   const drawings      = useDrawingsStore((s) => s.drawings);
   const shuffleMutes  = useDrawingsStore((s) => s.shuffleMutes);
   const currentUserId = useSessionStore((s) => s.userId);
+  const viewportMode  = useViewportStore((s) => s.viewportMode);
+  const visibleIds    = useViewportStore((s) => s.visibleDrawingIds);
 
   const [open,      setOpen]      = useState(false);
   const [shuffling, setShuffling] = useState(false);
 
-  const ownDrawings    = drawings.filter((d) => d.userId === currentUserId);
-  const othersDrawings = drawings.filter((d) => d.userId !== currentUserId);
+  const ownDrawings = drawings
+    .filter((d) => d.userId === currentUserId)
+    .filter((d) => !viewportMode || visibleIds.has(d.id));
+  const othersDrawings = drawings
+    .filter((d) => d.userId !== currentUserId)
+    .filter((d) => !viewportMode || visibleIds.has(d.id));
 
   function toggle() { setOpen((v) => !v); }
 
@@ -261,6 +268,13 @@ export default function DrawingPanel() {
   const canShuffle = drawings.length >= 2;
   const hasAudible = drawings.some((d) => !d.isMuted);
   const total      = drawings.length;
+
+  const audibleInView = viewportMode
+    ? [...visibleIds].filter((id) => {
+        const d = drawings.find((dd) => dd.id === id);
+        return d && !d.isMuted;
+      }).length
+    : 0;
 
   return (
     <div className={`drawing-panel${open ? ' drawing-panel--open' : ''}`}>
@@ -276,7 +290,10 @@ export default function DrawingPanel() {
         <div className="panel-pill" />
         <div className="panel-handle-row">
           <span className="panel-label">
-            {total === 0 ? 'no strokes' : `${total} stroke${total !== 1 ? 's' : ''}`}
+            {viewportMode
+              ? `Sounds in view: ${audibleInView}`
+              : total === 0 ? 'no strokes' : `${total} stroke${total !== 1 ? 's' : ''}`
+            }
           </span>
           <div className="panel-actions">
             {hasAudible && (
