@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import type { BoundingBox } from '../utils/pathUtils';
 import type { SoundMapping } from '../utils/soundMapping';
+import { mapDrawingToSound } from '../utils/soundMapping';
 import type { InstrumentName } from '../constants/instrumentMap';
-import { assignBeatPosition } from '../utils/beatPosition';
 import { supabase, type Tables, type Json } from '../lib/supabase';
 import { useSessionStore } from './sessionStore';
 import { useToastStore } from './toastStore';
@@ -13,6 +13,7 @@ export interface DrawingObject {
   id:          string;
   /** auth.users.id of the creator — used for ownership checks. */
   userId:      string;
+  username:    string | null;
   canvasId:    string;
   path:        string;
   boundingBox: BoundingBox;
@@ -23,28 +24,39 @@ export interface DrawingObject {
   isActive:    boolean;
   isLocked:    boolean;
   /**
-   * Session-only mute flag. True for all drawings fetched on load and all
-   * realtime inserts from other users. Set to false only when the user draws
-   * something themselves, or when they interact with the DrawingPanel toggle.
-   * The audio loop skips drawings where isMuted is true.
+   * Session-only mute flag. False by default for all drawings (loaded or new).
+   * The audio loop skips drawings where isMuted is true. Toggled via DrawingPanel.
    */
   isMuted:     boolean;
+  /** Per-drawing volume 0–100. Persisted to Supabase. Default 70. */
+  volume:      number;
   createdAt:   number;
   soundMapping: SoundMapping;
   beatPosition: number;
 }
 
-const HIDDEN_IDS_KEY = 'concerto_hidden_drawing_ids';
+// Key the hidden-IDs store by userId so two users sharing a browser don't
+// bleed into each other's hidden sets. The userId is written to localStorage
+// by sessionStore before any canvas interaction is possible, so it's already
+// available here at synchronous store-init time for returning users.
+function hiddenIdsKey(): string {
+  try {
+    const uid = localStorage.getItem('concerto_user_id');
+    return uid ? `concerto_hidden_drawing_ids:${uid}` : 'concerto_hidden_drawing_ids';
+  } catch {
+    return 'concerto_hidden_drawing_ids';
+  }
+}
 
 function loadHiddenIds(): Set<string> {
   try {
-    const raw = localStorage.getItem(HIDDEN_IDS_KEY);
+    const raw = localStorage.getItem(hiddenIdsKey());
     return new Set<string>(raw ? JSON.parse(raw) : []);
   } catch { return new Set<string>(); }
 }
 
 function saveHiddenIds(ids: Set<string>): void {
-  try { localStorage.setItem(HIDDEN_IDS_KEY, JSON.stringify([...ids])); } catch { /* ignore */ }
+  try { localStorage.setItem(hiddenIdsKey(), JSON.stringify([...ids])); } catch { /* ignore */ }
 }
 
 interface DrawingsState {
@@ -62,39 +74,44 @@ interface DrawingsState {
   }) => void;
   removeDrawing:        (id: string) => void;
   toggleHidden:         (id: string) => void;
-  clearDrawings:        () => void;
-  shuffleSoundMappings: () => void;
+  setVolume:            (id: string, volume: number) => void;
+  clearDrawings: () => void;
+  shuffleMutes:  () => void;
 }
 
 // ── Row converter ─────────────────────────────────────────────────────────────
 
-function rowToDrawing(row: Tables<'drawings'>): DrawingObject {
-  const instrument = row.instrument as InstrumentName;
+function rowToDrawing(row: Tables<'drawings'>, username: string | null = null): DrawingObject {
+  const instrument  = row.instrument as InstrumentName;
+  const boundingBox = row.bounding_box as unknown as BoundingBox;
+  // Re-derive sound mapping from stored geometry so all loaded drawings
+  // immediately reflect the current global key/scale rather than values
+  // computed by older algorithm versions (e.g. with frequency jitter).
+  const soundMapping = mapDrawingToSound({ boundingBox, id: row.id }, row.color);
   return {
     id:          row.id,
     userId:      row.user_id,
+    username,
     canvasId:    row.canvas_id,
     path:        row.path_data,
-    boundingBox: row.bounding_box as unknown as BoundingBox,
+    boundingBox,
     position:    row.canvas_position as unknown as { x: number; y: number },
     strokeColor: row.color,
     strokeWidth: STROKE_WIDTH,
     instrument,
     isActive:    true,
     isLocked:    false,
-    isMuted:     true,   // always start muted regardless of any stored state
+    isMuted:     false,
+    volume:      (row.volume as number | null) ?? 70,
     createdAt:   new Date(row.created_at).getTime(),
     beatPosition: Number(row.beat_position),
-    soundMapping: {
-      note:      row.note,
-      chord:     row.chord as unknown as string[],
-      frequency: row.frequencies as unknown as number[],
-      instrument,
-    },
+    soundMapping,
   };
 }
 
 // ── Store ─────────────────────────────────────────────────────────────────────
+
+const volumeTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 export const useDrawingsStore = create<DrawingsState>((set, get) => ({
   drawings:  [],
@@ -118,6 +135,7 @@ export const useDrawingsStore = create<DrawingsState>((set, get) => ({
       chord:           drawing.soundMapping.chord     as unknown as Json,
       frequencies:     drawing.soundMapping.frequency as unknown as Json,
       beat_position:   drawing.beatPosition,
+      volume:          drawing.volume,
     };
 
     void (async () => {
@@ -213,7 +231,11 @@ export const useDrawingsStore = create<DrawingsState>((set, get) => ({
     supabase.from('drawings').update({ is_deleted: true })
       .eq('id', id)
       .then(({ error }) => {
-        if (error) console.error('[drawings] soft-delete failed:', error.message);
+        if (!error) return;
+        // Rollback: restore the drawing so it doesn't silently reappear on reload.
+        console.error('[drawings] soft-delete failed:', error.message);
+        useDrawingsStore.setState((s) => ({ drawings: [...s.drawings, drawing] }));
+        useToastStore.getState().showToast('Failed to delete drawing');
       });
   },
 
@@ -226,43 +248,44 @@ export const useDrawingsStore = create<DrawingsState>((set, get) => ({
     });
   },
 
+  setVolume: (id, volume) => {
+    set((state) => ({
+      drawings: state.drawings.map((d) => d.id === id ? { ...d, volume } : d),
+    }));
+    const existing = volumeTimers.get(id);
+    if (existing) clearTimeout(existing);
+    volumeTimers.set(id, setTimeout(() => {
+      volumeTimers.delete(id);
+      supabase.from('drawings').update({ volume }).eq('id', id).then(({ error }) => {
+        if (error) console.error('[drawings] volume update failed:', error.message);
+      });
+    }, 400));
+  },
+
   clearDrawings: () => set({ drawings: [] }),
 
-  shuffleSoundMappings: () =>
-    set((state) => {
-      const unlocked = state.drawings.filter((d) => !d.isLocked);
-      if (unlocked.length < 2) return state;
-
-      const mappings = unlocked.map((d) => d.soundMapping);
-      for (let i = mappings.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [mappings[i], mappings[j]] = [mappings[j], mappings[i]];
-      }
-
-      const newMap = new Map(unlocked.map((d, i) => [d.id, mappings[i]]));
-      return {
-        drawings: state.drawings.map((d) => {
-          if (!newMap.has(d.id)) return d;
-          const sm = newMap.get(d.id)!;
-          return {
-            ...d,
-            soundMapping:  sm,
-            instrument:    sm.instrument,
-            beatPosition:  assignBeatPosition(d.id, sm.instrument),
-          };
-        }),
-      };
-    }),
+  // Randomly mute/unmute every unlocked drawing. Locked drawings keep their
+  // current mute state. Bias: each unlocked drawing has a 40% chance of being
+  // unmuted, so a busy canvas produces a sparse, fresh combination on each tap.
+  shuffleMutes: () =>
+    set((state) => ({
+      drawings: state.drawings.map((d) =>
+        d.isLocked ? d : { ...d, isMuted: Math.random() > 0.4 },
+      ),
+    })),
 }));
 
 // ── Supabase sync ─────────────────────────────────────────────────────────────
 // Runs once when the session is ready (canvasId available). Fetches all
 // existing drawings then opens a realtime channel for live updates.
 
+// userId → username cache; populated during initial sync and on realtime INSERTs
+// from users not yet seen. Avoids per-drawing round-trips on the hot path.
+const knownUsernames = new Map<string, string | null>();
+
 let syncStarted = false;
 
 async function startSync(canvasId: string): Promise<void> {
-  // Initial hydration — all fetched drawings start muted.
   const { data, error } = await supabase
     .from('drawings')
     .select('*')
@@ -273,7 +296,17 @@ async function startSync(canvasId: string): Promise<void> {
   if (error) {
     console.error('[drawings] initial load failed:', error.message);
   } else {
-    const dbDrawings = (data ?? []).map(rowToDrawing);
+    const rows = data ?? [];
+    // Batch-fetch usernames for every unique creator in one query.
+    const userIds = [...new Set(rows.map((r) => r.user_id))];
+    if (userIds.length > 0) {
+      const { data: usersData } = await supabase
+        .from('users')
+        .select('id, username')
+        .in('id', userIds);
+      for (const u of usersData ?? []) knownUsernames.set(u.id, u.username);
+    }
+    const dbDrawings = rows.map((r) => rowToDrawing(r, knownUsernames.get(r.user_id) ?? null));
     useDrawingsStore.setState((state) => {
       // Merge: keep optimistic drawings already in store (own strokes drawn during
       // the async fetch), and append only DB rows not yet present locally.
@@ -301,9 +334,23 @@ async function startSync(canvasId: string): Promise<void> {
           const row = payload.new as unknown as Tables<'drawings'>;
           if (row.user_id === userId) return; // already in store via optimistic add
           if (row.is_deleted) return;
-          useDrawingsStore.setState((state) => ({
-            drawings: [...state.drawings, rowToDrawing(row)],
-          }));
+          void (async () => {
+            // Fetch username if we haven't seen this user before.
+            if (!knownUsernames.has(row.user_id)) {
+              const { data: uData } = await supabase
+                .from('users').select('username').eq('id', row.user_id).maybeSingle();
+              knownUsernames.set(row.user_id, uData?.username ?? null);
+            }
+            // Start muted so a new arrival doesn't interrupt the listener's session.
+            // The user can unmute via DrawingPanel or the shuffle button.
+            const incoming = {
+              ...rowToDrawing(row, knownUsernames.get(row.user_id) ?? null),
+              isMuted: true,
+            };
+            useDrawingsStore.setState((state) => ({
+              drawings: [...state.drawings, incoming],
+            }));
+          })();
         }
 
         if (payload.eventType === 'UPDATE') {
@@ -324,7 +371,7 @@ async function startSync(canvasId: string): Promise<void> {
               drawings: state.drawings.map((d) => {
                 if (d.id !== row.id) return d;
                 return {
-                  ...rowToDrawing(row),
+                  ...rowToDrawing(row, knownUsernames.get(row.user_id) ?? d.username),
                   isActive: d.isActive,
                   isLocked: d.isLocked,
                   isMuted:  d.isMuted,

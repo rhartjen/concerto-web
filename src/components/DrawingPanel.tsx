@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDrawingsStore, type DrawingObject } from '../store/drawingsStore';
 import { useSessionStore } from '../store/sessionStore';
+import { setDrawingVolume, removeDrawingGain } from '../utils/audioEngine';
 import './DrawingPanel.css';
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
@@ -83,10 +84,12 @@ function AnimatedCardInfo({ drawing }: { drawing: DrawingObject }) {
     );
   }, [key]);
 
+  const secondary = drawing.username ? `${drawing.username} · ${instruc}` : instruc;
+
   return (
     <div ref={ref} className="card-info">
       <span className="card-note-name">{label}</span>
-      <span className="card-freq">{instruc}</span>
+      <span className="card-freq">{secondary}</span>
     </div>
   );
 }
@@ -95,40 +98,61 @@ function AnimatedCardInfo({ drawing }: { drawing: DrawingObject }) {
 // Card for drawings created by the current user.
 
 function OwnCard({ drawing }: { drawing: DrawingObject }) {
-  const update = useDrawingsStore((s) => s.updateDrawing);
-  const remove = useDrawingsStore((s) => s.removeDrawing);
+  const update    = useDrawingsStore((s) => s.updateDrawing);
+  const remove    = useDrawingsStore((s) => s.removeDrawing);
+  const setVolume = useDrawingsStore((s) => s.setVolume);
 
   const muted = drawing.isMuted;
 
   return (
     <div className="drawing-card">
-      <span
-        className="card-swatch"
-        style={{ background: drawing.strokeColor }}
-      />
+      <div className="card-main-row">
+        <span
+          className="card-swatch"
+          style={{ background: drawing.strokeColor }}
+        />
 
-      <AnimatedCardInfo drawing={drawing} />
+        <AnimatedCardInfo drawing={drawing} />
 
-      <button
-        className="card-icon-btn"
-        onClick={() => update(drawing.id, { isMuted: !muted })}
-        aria-label={muted ? 'Unmute' : 'Mute'}
-        title={muted ? 'Unmute' : 'Mute'}
-      >
-        {muted
-          ? <SpeakerOff color="#ff6b6b" />
-          : <SpeakerOn  color="#3ED4C4" />
-        }
-      </button>
+        <button
+          className="card-icon-btn"
+          onClick={() => update(drawing.id, { isMuted: !muted })}
+          aria-label={muted ? 'Unmute' : 'Mute'}
+          title={muted ? 'Unmute' : 'Mute'}
+        >
+          {muted
+            ? <SpeakerOff color="#ff6b6b" />
+            : <SpeakerOn  color="#3ED4C4" />
+          }
+        </button>
 
-      <button
-        className="card-icon-btn card-delete"
-        onClick={() => remove(drawing.id)}
-        aria-label="Delete"
-        title="Delete"
-      >
-        ✕
-      </button>
+        <button
+          className="card-icon-btn card-delete"
+          onClick={() => { removeDrawingGain(drawing.id); remove(drawing.id); }}
+          aria-label="Delete"
+          title="Delete"
+        >
+          ✕
+        </button>
+      </div>
+
+      <div className="card-slider-row">
+        <input
+          type="range"
+          min={0}
+          max={100}
+          value={drawing.volume}
+          disabled={muted}
+          className={`card-volume-slider${muted ? ' card-volume-slider--muted' : ''}`}
+          style={{ '--val': drawing.volume } as React.CSSProperties}
+          aria-label="Volume"
+          onChange={(e) => {
+            const val = Number(e.target.value);
+            setVolume(drawing.id, val);
+            setDrawingVolume(drawing.id, val / 100);
+          }}
+        />
+      </div>
     </div>
   );
 }
@@ -139,6 +163,7 @@ function OwnCard({ drawing }: { drawing: DrawingObject }) {
 function CanvasCard({ drawing }: { drawing: DrawingObject }) {
   const update       = useDrawingsStore((s) => s.updateDrawing);
   const toggleHidden = useDrawingsStore((s) => s.toggleHidden);
+  const setVolume    = useDrawingsStore((s) => s.setVolume);
   const hiddenIds    = useDrawingsStore((s) => s.hiddenIds);
 
   const muted  = drawing.isMuted;
@@ -146,36 +171,56 @@ function CanvasCard({ drawing }: { drawing: DrawingObject }) {
 
   return (
     <div className={`drawing-card${hidden ? ' drawing-card--hidden' : ''}`}>
-      <span
-        className="card-swatch"
-        style={{ background: drawing.strokeColor }}
-      />
+      <div className="card-main-row">
+        <span
+          className="card-swatch"
+          style={{ background: drawing.strokeColor }}
+        />
 
-      <AnimatedCardInfo drawing={drawing} />
+        <AnimatedCardInfo drawing={drawing} />
 
-      <button
-        className="card-icon-btn"
-        onClick={() => update(drawing.id, { isMuted: !muted })}
-        aria-label={muted ? 'Unmute' : 'Mute'}
-        title={muted ? 'Unmute' : 'Mute'}
-      >
-        {muted
-          ? <SpeakerOff color="#ff6b6b" />
-          : <SpeakerOn  color="#3ED4C4" />
-        }
-      </button>
+        <button
+          className="card-icon-btn"
+          onClick={() => update(drawing.id, { isMuted: !muted })}
+          aria-label={muted ? 'Unmute' : 'Mute'}
+          title={muted ? 'Unmute' : 'Mute'}
+        >
+          {muted
+            ? <SpeakerOff color="#ff6b6b" />
+            : <SpeakerOn  color="#3ED4C4" />
+          }
+        </button>
 
-      <button
-        className="card-icon-btn"
-        onClick={() => toggleHidden(drawing.id)}
-        aria-label={hidden ? 'Show on canvas' : 'Hide from canvas'}
-        title={hidden ? 'Show on canvas' : 'Hide from canvas'}
-      >
-        {hidden
-          ? <EyeClosed color="#4a5278" />
-          : <EyeOpen   color="#4a5278" />
-        }
-      </button>
+        <button
+          className="card-icon-btn"
+          onClick={() => toggleHidden(drawing.id)}
+          aria-label={hidden ? 'Show on canvas' : 'Hide from canvas'}
+          title={hidden ? 'Show on canvas' : 'Hide from canvas'}
+        >
+          {hidden
+            ? <EyeClosed color="#4a5278" />
+            : <EyeOpen   color="#4a5278" />
+          }
+        </button>
+      </div>
+
+      <div className="card-slider-row">
+        <input
+          type="range"
+          min={0}
+          max={100}
+          value={drawing.volume}
+          disabled={muted}
+          className={`card-volume-slider${muted ? ' card-volume-slider--muted' : ''}`}
+          style={{ '--val': drawing.volume } as React.CSSProperties}
+          aria-label="Volume"
+          onChange={(e) => {
+            const val = Number(e.target.value);
+            setVolume(drawing.id, val);
+            setDrawingVolume(drawing.id, val / 100);
+          }}
+        />
+      </div>
     </div>
   );
 }
@@ -195,9 +240,9 @@ function SectionHeader({ label, count }: { label: string; count: number }) {
 
 export default function DrawingPanel() {
   const navigate             = useNavigate();
-  const drawings             = useDrawingsStore((s) => s.drawings);
-  const shuffleSoundMappings = useDrawingsStore((s) => s.shuffleSoundMappings);
-  const currentUserId        = useSessionStore((s) => s.userId);
+  const drawings      = useDrawingsStore((s) => s.drawings);
+  const shuffleMutes  = useDrawingsStore((s) => s.shuffleMutes);
+  const currentUserId = useSessionStore((s) => s.userId);
 
   const [open,      setOpen]      = useState(false);
   const [shuffling, setShuffling] = useState(false);
@@ -208,12 +253,12 @@ export default function DrawingPanel() {
   function toggle() { setOpen((v) => !v); }
 
   function handleShuffle() {
-    shuffleSoundMappings();
+    shuffleMutes();
     setShuffling(true);
     setTimeout(() => setShuffling(false), 400);
   }
 
-  const canShuffle = ownDrawings.length >= 2;
+  const canShuffle = drawings.length >= 2;
   const hasAudible = drawings.some((d) => !d.isMuted);
   const total      = drawings.length;
 

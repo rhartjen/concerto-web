@@ -36,6 +36,10 @@ let masterComp:   DynamicsCompressorNode | null = null;
 let reverbNode:   ConvolverNode          | null = null;
 let reverbReturn: GainNode               | null = null;
 
+// Per-drawing gain nodes persist between chord calls so the slider can ramp
+// their gain smoothly without re-creating the node on every tick.
+const drawingGains = new Map<string, GainNode>();
+
 // Tracks the previous frequency played by the lead synth for portamento.
 let lastLeadFreq = 0;
 
@@ -88,10 +92,33 @@ export function unlockAudio(): void {
   if (!ctx || ctx.state === 'closed') {
     ctx = new AudioContext();
     masterComp = reverbNode = reverbReturn = null; // rebuild graph for new context
+    drawingGains.clear();
     lastLeadFreq = 0;
   }
   if (ctx.state === 'suspended') ctx.resume().catch(() => {});
   ensureGraph();
+}
+
+function getOrCreateDrawingGain(id: string, initialGain: number): GainNode {
+  let g = drawingGains.get(id);
+  if (!g) {
+    g = ctx!.createGain();
+    g.gain.value = Math.max(0, Math.min(1, initialGain));
+    g.connect(masterComp!);
+    drawingGains.set(id, g);
+  }
+  return g;
+}
+
+export function setDrawingVolume(id: string, normalizedVolume: number): void {
+  if (!ctx || !masterComp) return;
+  const g = getOrCreateDrawingGain(id, normalizedVolume);
+  g.gain.setTargetAtTime(Math.max(0, Math.min(1, normalizedVolume)), ctx.currentTime, 0.01);
+}
+
+export function removeDrawingGain(id: string): void {
+  const g = drawingGains.get(id);
+  if (g) { try { g.disconnect(); } catch { /* already gone */ } drawingGains.delete(id); }
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -604,10 +631,12 @@ const SYNTHS: Record<InstrumentName, SynthFn> = {
 // ── Public API ─────────────────────────────────────────────────────────────────
 
 export async function playChord(
-  frequencies: number[],
-  duration:    number         = 2.5,
-  instrument:  InstrumentName = 'synth pad',
-  volume:      number         = 1.0,
+  frequencies:  number[],
+  duration:     number         = 2.5,
+  instrument:   InstrumentName = 'synth pad',
+  volume:       number         = 1.0,
+  drawingId?:   string,
+  drawingGain:  number         = 1.0,
 ): Promise<void> {
   if (!ctx || frequencies.length === 0) return;
 
@@ -620,6 +649,10 @@ export async function playChord(
   if (!masterComp) ensureGraph();
   if (!masterComp) return;
 
+  const dest = drawingId
+    ? getOrCreateDrawingGain(drawingId, drawingGain)
+    : masterComp;
+
   const peak = AMPLITUDE * Math.max(0, Math.min(1, volume)) * INSTRUMENT_GAIN[instrument];
-  SYNTHS[instrument](ctx, masterComp, frequencies, duration, peak);
+  SYNTHS[instrument](ctx, dest, frequencies, duration, peak);
 }

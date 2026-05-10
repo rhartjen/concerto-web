@@ -17,17 +17,25 @@ import TempoBar from './TempoBar';
 import './Canvas.css';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
-const MIN_SCALE    = 0.15;
-const MAX_SCALE    = 8;
-const GRID_SIZE    = 40;
-const STROKE_WIDTH = 4;
-const MIN_DIST_SQ  = 4;   // skip micro-movements to avoid path bloat
-const CYCLE_MS     = 2500; // visual pulse period for AnimatedStroke only
-const MINIMAP_SIZE = 150;
-const MS           = MINIMAP_SIZE / CANVAS_WIDTH; // minimap scale factor
+const MIN_SCALE        = 0.25;
+const MAX_SCALE        = 4;
+const GRID_SIZE        = 40;
+const STROKE_WIDTH     = 4;
+const MIN_DIST_SQ      = 4;    // skip micro-movements to avoid path bloat
+const CYCLE_MS         = 2500; // visual pulse period for AnimatedStroke only
+const MINIMAP_SIZE     = 150;
+const MS               = MINIMAP_SIZE / CANVAS_WIDTH; // minimap scale factor
+const LONG_PRESS_MS    = 600;  // touch hold duration before label appears
+const LONG_PRESS_SQ    = 225;  // 15 screen-px radius² — movement cancels long-press
 
 function clamp(v: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, v));
+}
+
+function drawingLabelText(d: DrawingObject): string {
+  const freqs   = d.soundMapping.frequency;
+  const isMinor = freqs.length >= 2 && freqs[1] / freqs[0] < 1.22;
+  return `${d.soundMapping.note.replace(/\d+$/, '')} ${isMinor ? 'min' : 'maj'}`;
 }
 
 // ─── ShimmerOrb ──────────────────────────────────────────────────────────────
@@ -279,6 +287,12 @@ export default function Canvas({ children }: CanvasProps) {
   const contentRef      = useRef<HTMLDivElement>(null);
   const viewportRectRef = useRef<SVGRectElement>(null);
 
+  // ── Canvas username label (hover / long-press) — imperative to avoid re-renders
+  const drawingLabelRef    = useRef<HTMLDivElement>(null);
+  const labelDrawingRef    = useRef<DrawingObject | null>(null);
+  const longPressTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressOriginRef = useRef<{ clientX: number; clientY: number } | null>(null);
+
   // ── Drawing state ─────────────────────────────────────────────────────────
   const currentPointsRef  = useRef<Point[]>([]);
   const isDrawingRef      = useRef(false);
@@ -347,6 +361,15 @@ export default function Canvas({ children }: CanvasProps) {
       r.setAttribute('width',  String(vpW));
       r.setAttribute('height', String(vpH));
     }
+
+    // Keep canvas username label anchored to its drawing during pan/zoom.
+    const labelEl = drawingLabelRef.current;
+    const labelD  = labelDrawingRef.current;
+    if (labelEl && labelD) {
+      const sx = (labelD.boundingBox.x + labelD.boundingBox.width  / 2) * scaleRef.current + txRef.current;
+      const sy =  labelD.boundingBox.y                                   * scaleRef.current + tyRef.current;
+      labelEl.style.transform = `translate(calc(${sx}px - 50%), calc(${sy}px - 100% - 8px))`;
+    }
   }, []);
 
   // ── Drawing callbacks ─────────────────────────────────────────────────────
@@ -373,7 +396,7 @@ export default function Canvas({ children }: CanvasProps) {
     if (pts.length === 0) return;
 
     // Session must be ready before any drawing can be persisted.
-    const { userId, canvasId } = useSessionStore.getState();
+    const { userId, canvasId, username } = useSessionStore.getState();
     if (!userId || !canvasId) return;
 
     const pathData    = buildSmoothPath(pts);
@@ -415,6 +438,7 @@ export default function Canvas({ children }: CanvasProps) {
       const base = {
         id,
         userId,
+        username:    username ?? null,
         canvasId,
         path:        pathData,
         boundingBox: bbox,
@@ -425,6 +449,7 @@ export default function Canvas({ children }: CanvasProps) {
         isActive:    true,
         isLocked:    false,
         isMuted:     false,   // own new drawings play immediately
+        volume:      70,
         createdAt:   Date.now(),
         beatPosition: assignBeatPosition(id, instrument),
       };
@@ -456,7 +481,7 @@ export default function Canvas({ children }: CanvasProps) {
     applyTransform();
   }, [applyTransform]);
 
-  // ── Pointer events → drawing ──────────────────────────────────────────────
+  // ── Pointer events → drawing + hover/long-press username label ───────────
   // Separate from @use-gesture/react so draw and pinch never conflict.
   useEffect(() => {
     const el = containerRef.current;
@@ -470,8 +495,46 @@ export default function Canvas({ children }: CanvasProps) {
       };
     }
 
+    // Show the username label for a drawing, positioned in screen space.
+    function showLabel(d: DrawingObject) {
+      labelDrawingRef.current = d;
+      const labelEl = drawingLabelRef.current;
+      if (!labelEl) return;
+      const parts = [d.username, d.instrument, drawingLabelText(d)].filter(Boolean);
+      labelEl.textContent = parts.join(' · ');
+      const sx = (d.boundingBox.x + d.boundingBox.width  / 2) * scaleRef.current + txRef.current;
+      const sy =  d.boundingBox.y                               * scaleRef.current + tyRef.current;
+      labelEl.style.transform = `translate(calc(${sx}px - 50%), calc(${sy}px - 100% - 8px))`;
+      labelEl.style.opacity = '1';
+    }
+
+    function hideLabel() {
+      labelDrawingRef.current = null;
+      if (drawingLabelRef.current) drawingLabelRef.current.style.opacity = '0';
+    }
+
+    // Hit-test canvas coordinates against visible drawing bounding boxes.
+    function hitDrawing(canvasX: number, canvasY: number): DrawingObject | null {
+      const { drawings, hiddenIds } = useDrawingsStore.getState();
+      const uid = useSessionStore.getState().userId;
+      const pad = 20 / scaleRef.current; // scale-compensated padding
+      for (let i = drawings.length - 1; i >= 0; i--) {
+        const d = drawings[i];
+        if (d.userId !== uid && hiddenIds.has(d.id)) continue;
+        const { x, y, width, height } = d.boundingBox;
+        if (canvasX >= x - pad && canvasX <= x + width  + pad &&
+            canvasY >= y - pad && canvasY <= y + height + pad) {
+          return d;
+        }
+      }
+      return null;
+    }
+
     function onPointerDown(e: PointerEvent) {
       if ((e.target as Element).closest?.('.color-picker, .canvas-nav, .tempo-bar')) return;
+
+      // Any new pointer interaction dismisses the current label.
+      hideLabel();
 
       activePointers.current.add(e.pointerId);
 
@@ -480,8 +543,28 @@ export default function Canvas({ children }: CanvasProps) {
         startStroke(pt.x, pt.y);
         isDrawingRef.current = true;
         el!.setPointerCapture(e.pointerId);
+
+        // Long-press trigger — touch only. If the finger stays still for
+        // LONG_PRESS_MS we cancel the stroke and show the drawing label instead.
+        if (e.pointerType === 'touch') {
+          longPressOriginRef.current = { clientX: e.clientX, clientY: e.clientY };
+          longPressTimerRef.current = setTimeout(() => {
+            if (!isDrawingRef.current) return;
+            isDrawingRef.current = false;
+            currentPointsRef.current = [];
+            setCurrentPath('');
+            const origin = longPressOriginRef.current!;
+            const pt2 = toCanvas(origin.clientX, origin.clientY);
+            const hit = hitDrawing(pt2.x, pt2.y);
+            if (hit) showLabel(hit);
+          }, LONG_PRESS_MS);
+        }
       } else if (isDrawingRef.current) {
-        // Second finger arrived — cancel the in-progress stroke.
+        // Second finger arrived — cancel any in-progress stroke and long-press.
+        if (longPressTimerRef.current) {
+          clearTimeout(longPressTimerRef.current);
+          longPressTimerRef.current = null;
+        }
         isDrawingRef.current = false;
         currentPointsRef.current = [];
         setCurrentPath('');
@@ -489,12 +572,40 @@ export default function Canvas({ children }: CanvasProps) {
     }
 
     function onPointerMove(e: PointerEvent) {
-      if (!isDrawingRef.current) return;
+      // Cancel long-press if the touch moves beyond the threshold.
+      if (longPressTimerRef.current && longPressOriginRef.current) {
+        const dsx = e.clientX - longPressOriginRef.current.clientX;
+        const dsy = e.clientY - longPressOriginRef.current.clientY;
+        if (dsx * dsx + dsy * dsy > LONG_PRESS_SQ) {
+          clearTimeout(longPressTimerRef.current);
+          longPressTimerRef.current = null;
+        }
+      }
+
+      if (!isDrawingRef.current) {
+        // Hover detection — mouse only, only when no button is held.
+        if (e.pointerType === 'mouse' && activePointers.current.size === 0) {
+          const pt = toCanvas(e.clientX, e.clientY);
+          const hit = hitDrawing(pt.x, pt.y);
+          if (hit?.id !== labelDrawingRef.current?.id) {
+            if (hit) showLabel(hit);
+            else hideLabel();
+          }
+        }
+        return;
+      }
+
       const pt = toCanvas(e.clientX, e.clientY);
       addPoint(pt.x, pt.y);
     }
 
     function onPointerUp(e: PointerEvent) {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
+      longPressOriginRef.current = null;
+
       activePointers.current.delete(e.pointerId);
       if (isDrawingRef.current && activePointers.current.size === 0) {
         isDrawingRef.current = false;
@@ -503,6 +614,12 @@ export default function Canvas({ children }: CanvasProps) {
     }
 
     function onPointerCancel(e: PointerEvent) {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
+      longPressOriginRef.current = null;
+
       activePointers.current.delete(e.pointerId);
       if (isDrawingRef.current) {
         isDrawingRef.current = false;
@@ -511,16 +628,24 @@ export default function Canvas({ children }: CanvasProps) {
       }
     }
 
+    // Hide the hover label when the mouse exits the canvas area.
+    function onPointerLeave(e: PointerEvent) {
+      if (e.pointerType === 'mouse') hideLabel();
+    }
+
     el.addEventListener('pointerdown',   onPointerDown);
     el.addEventListener('pointermove',   onPointerMove);
     el.addEventListener('pointerup',     onPointerUp);
     el.addEventListener('pointercancel', onPointerCancel);
+    el.addEventListener('pointerleave',  onPointerLeave);
 
     return () => {
       el.removeEventListener('pointerdown',   onPointerDown);
       el.removeEventListener('pointermove',   onPointerMove);
       el.removeEventListener('pointerup',     onPointerUp);
       el.removeEventListener('pointercancel', onPointerCancel);
+      el.removeEventListener('pointerleave',  onPointerLeave);
+      if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
     };
   }, [startStroke, addPoint, finishStroke]);
 
@@ -557,6 +682,28 @@ export default function Canvas({ children }: CanvasProps) {
     return () => el.removeEventListener('wheel', onWheel);
   }, [applyTransform]);
 
+  // ── iOS Safari: block native pinch-to-zoom and overscroll ───────────────
+  // CSS touch-action:none is not reliably honoured on iOS Safari; the
+  // browser's system-level gesture recogniser can engage before JS sees the
+  // event unless we call preventDefault() on a non-passive touchstart (for
+  // multi-touch) and touchmove (to stop rubber-band scrolling during pan).
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    function onTouchStart(e: TouchEvent) {
+      if (e.touches.length > 1) e.preventDefault();
+    }
+    function onTouchMove(e: TouchEvent) {
+      e.preventDefault();
+    }
+    el.addEventListener('touchstart', onTouchStart, { passive: false });
+    el.addEventListener('touchmove',  onTouchMove,  { passive: false });
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove',  onTouchMove);
+    };
+  }, []);
+
   // ── Touch pinch → zoom + two-finger pan ──────────────────────────────────
   // @use-gesture/react owns the two-touch gesture. The pointer event handler
   // above cancels any active draw as soon as a second pointer appears, so
@@ -568,8 +715,8 @@ export default function Canvas({ children }: CanvasProps) {
 
   useGesture(
     {
-      onPinch: ({ offset: [s], origin: [ox, oy], first }) => {
-        // offset[0] starts at 1 and accumulates multiplicatively per gesture.
+      onPinch: ({ event, offset: [s], origin: [ox, oy], first }) => {
+        event.preventDefault();
         if (first) {
           pinchMemo.current = {
             tx: txRef.current, ty: tyRef.current,
@@ -657,6 +804,9 @@ export default function Canvas({ children }: CanvasProps) {
       </div>
 
       <CanvasEmptyState />
+
+      {/* Username label — shown on hover (mouse) or long-press (touch); positioned imperatively */}
+      <div ref={drawingLabelRef} className="drawing-label" />
 
       <Minimap
         drawings={drawings}

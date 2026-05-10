@@ -43,9 +43,9 @@
   position: absolute;
   top: 0;
   left: 0;
-  /* transform and transform-origin are set once in React */
   transform-origin: 0 0;
   pointer-events: none;
+  will-change: transform;
 }
 
 .canvas-drawing-svg {
@@ -54,6 +54,28 @@
   top: 0;
   overflow: visible;
   pointer-events: none;
+}
+
+/* ── Drawing username label (hover / long-press) ─────────────────────────── */
+.drawing-label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  background: rgba(7, 9, 26, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 6px;
+  padding: 4px 9px;
+  font-family: 'Space Mono', monospace;
+  font-size: 10px;
+  color: #8a90b8;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 15;
+  opacity: 0;
+  transition: opacity 0.15s;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
 }
 
 /* ── Minimap ─────────────────────────────────────────────────────────────── */

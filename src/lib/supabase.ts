@@ -82,6 +82,7 @@ export interface Database {
           chord:           Json;
           frequencies:     Json;
           beat_position:   number;
+          volume:          number;
           is_deleted:      boolean;
           created_at:      string;
         };
@@ -98,6 +99,7 @@ export interface Database {
           chord:           Json;
           frequencies:     Json;
           beat_position:   number;
+          volume?:         number;
           is_deleted?:     boolean;
           created_at?:     string;
         };
@@ -111,6 +113,7 @@ export interface Database {
           chord?:           Json;
           frequencies?:     Json;
           beat_position?:   number;
+          volume?:          number;
           is_deleted?:      boolean;
         };
         Relationships: [];

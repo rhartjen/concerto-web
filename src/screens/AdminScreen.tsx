@@ -265,17 +265,38 @@ function UsersTab({ canvasId }: { canvasId: string | null }) {
 
   useEffect(() => { load(); }, [load]);
 
+  const [opError, setOpError] = useState<string | null>(null);
+
   async function removeUser(u: UserRow) {
-    // Soft-delete all their drawings across all canvases, then remove the user row.
-    await admin.from('drawings').update({ is_deleted: true }).eq('user_id', u.id);
-    await admin.from('users').delete().eq('id', u.id);
+    setOpError(null);
+    // Soft-delete drawings first; deleting the user row while drawings still
+    // reference their auth UID can violate FK constraints on some schemas.
+    const { error: drawErr } = await admin
+      .from('drawings').update({ is_deleted: true }).eq('user_id', u.id);
+    if (drawErr) {
+      console.error('[admin] removeUser — drawings soft-delete failed:', drawErr);
+      setOpError(`Failed to remove drawings: ${drawErr.message}`);
+      return;
+    }
+    const { error: userErr } = await admin.from('users').delete().eq('id', u.id);
+    if (userErr) {
+      console.error('[admin] removeUser — user row delete failed:', userErr);
+      setOpError(`Failed to remove user: ${userErr.message}`);
+      return;
+    }
     setUsers((prev) => prev.filter((x) => x.id !== u.id));
   }
 
   async function removeDrawings(u: UserRow) {
-    await admin.from('drawings').update({ is_deleted: true })
+    setOpError(null);
+    const { error } = await admin.from('drawings').update({ is_deleted: true })
       .eq('user_id', u.id)
       .eq('canvas_id', canvasId!);
+    if (error) {
+      console.error('[admin] removeDrawings failed:', error);
+      setOpError(`Failed: ${error.message}`);
+      return;
+    }
     setUsers((prev) =>
       prev.map((x) => x.id === u.id ? { ...x, drawingCount: 0 } : x),
     );
@@ -286,6 +307,7 @@ function UsersTab({ canvasId }: { canvasId: string | null }) {
 
   return (
     <div className="a-content">
+      {opError && <p className="a-hint a-hint--error">{opError}</p>}
       {users.length === 0 ? (
         <p className="a-loading">no users on this canvas</p>
       ) : (
@@ -333,6 +355,7 @@ function UsersTab({ canvasId }: { canvasId: string | null }) {
 function DrawingsTab({ canvasId }: { canvasId: string | null }) {
   const [drawings, setDrawings] = useState<DrawingRow[]>([]);
   const [loading,  setLoading]  = useState(false);
+  const [opError,  setOpError]  = useState<string | null>(null);
   // nukeStep: 0 = idle, 1 = awaiting confirm, 2 = in-progress
   const [nukeStep, setNukeStep] = useState<0 | 1 | 2>(0);
 
@@ -366,14 +389,28 @@ function DrawingsTab({ canvasId }: { canvasId: string | null }) {
   useEffect(() => { load(); }, [load]);
 
   async function softDelete(id: string) {
-    await admin.from('drawings').update({ is_deleted: true }).eq('id', id);
+    setOpError(null);
+    const { error } = await admin.from('drawings').update({ is_deleted: true }).eq('id', id);
+    if (error) {
+      console.error('[admin] softDelete failed:', error);
+      setOpError(`Delete failed: ${error.message}`);
+      return;
+    }
     setDrawings((prev) => prev.filter((d) => d.id !== id));
   }
 
   async function nuke() {
     if (nukeStep === 0) { setNukeStep(1); return; }
     setNukeStep(2);
-    await admin.from('drawings').update({ is_deleted: true }).eq('canvas_id', canvasId!);
+    setOpError(null);
+    const { error } = await admin
+      .from('drawings').update({ is_deleted: true }).eq('canvas_id', canvasId!);
+    if (error) {
+      console.error('[admin] nuke failed:', error);
+      setNukeStep(0);
+      setOpError(`Nuke failed: ${error.message}`);
+      return;
+    }
     setDrawings([]);
     setNukeStep(0);
   }
@@ -383,6 +420,7 @@ function DrawingsTab({ canvasId }: { canvasId: string | null }) {
 
   return (
     <div className="a-content">
+      {opError && <p className="a-hint a-hint--error">{opError}</p>}
       <div className="a-toolbar">
         <span className="a-count">
           {drawings.length} drawing{drawings.length !== 1 ? 's' : ''}

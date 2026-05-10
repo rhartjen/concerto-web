@@ -1,6 +1,6 @@
 # Concerto Web — Project Handoff
 
-**Stack:** React 18 · TypeScript 5.5 · Vite 5.4 · Zustand 5 · Web Audio API  
+**Stack:** React 18 · TypeScript 6 · Vite 5.4 · Zustand 5 · Web Audio API · Supabase  
 **Entry point:** `src/main.tsx` → `src/App.tsx`  
 **Dev server:** `npm run dev` (Vite HMR)  
 **Build:** `npm run build` (tsc + Vite bundle → `dist/`)
@@ -27,7 +27,8 @@ concerto-web/
 │
 └── src/
     ├── main.tsx                # ReactDOM.createRoot, mounts <App />
-    ├── App.tsx                 # BrowserRouter + route table + global <Toast />
+    ├── App.tsx                 # BrowserRouter + route table + global <Toast /> +
+    │                           # global <UsernameModal />
     ├── index.css               # CSS reset, :root colour tokens, Space Mono import
     ├── App.css                 # (minimal, mostly superseded by component CSS)
     │
@@ -42,8 +43,8 @@ concerto-web/
     │   ├── Canvas.css
     │   ├── ColorPicker.tsx     # 9-swatch instrument selector; reads INSTRUMENT_MAP
     │   ├── ColorPicker.css
-    │   ├── DrawingPanel.tsx    # Bottom sheet: drawing cards, toggle/lock/delete,
-    │   │                       # Shuffle button, Sheet navigation
+    │   ├── DrawingPanel.tsx    # Bottom sheet / sidebar: drawing cards with mute,
+    │   │                       # volume slider, delete/hide; Shuffle + Sheet buttons
     │   ├── DrawingPanel.css
     │   ├── OnboardingOverlay.tsx  # 3-slide swipeable first-launch tutorial;
     │   │                          # dismissal persisted in localStorage
@@ -51,35 +52,52 @@ concerto-web/
     │   ├── TempoBar.tsx        # Fixed top bar: BPM display, range slider, tap-tempo
     │   ├── TempoBar.css
     │   ├── Toast.tsx           # Global toast renderer (reads toastStore)
-    │   └── Toast.css
+    │   ├── Toast.css
+    │   ├── UsernameModal.tsx   # Full-screen blocking modal on first visit; username
+    │   │                       # validation (3–20 chars, [a-zA-Z0-9_]); calls
+    │   │                       # sessionStore.setUsername; handles duplicate error
+    │   └── UsernameModal.css
     │
     ├── constants/
     │   ├── instrumentMap.ts    # InstrumentName union, INSTRUMENT_MAP (hex→instrument),
     │   │                       # INSTRUMENT_GAIN (mix levels), getInstrumentForColor()
-    │   └── limits.ts           # STROKE_GROUP_WINDOW_MS, STROKE_GROUP_PROXIMITY_PX
+    │   ├── limits.ts           # STROKE_GROUP_WINDOW_MS, STROKE_GROUP_PROXIMITY_PX,
+    │   │                       # CANVAS_WIDTH, CANVAS_HEIGHT
+    │   └── musicalKey.ts       # SCALE_INTERVALS library (7 named scales), GLOBAL_KEY,
+    │                           # GLOBAL_SCALE (currently C major), snapToScale() helper
     │
     ├── hooks/
     │   └── useAmbientLoop.ts   # Self-scheduling 8th-note tick loop; fires each
-    │                           # drawing's synth at its assigned beat position
+    │                           # drawing's synth at its assigned beat position; routes
+    │                           # audio through per-drawing GainNode
     │
     ├── screens/
     │   ├── CanvasScreen.tsx    # Composes <Canvas>, <DrawingPanel>, <OnboardingOverlay>
+    │   ├── AdminScreen.tsx     # Password-gated admin dashboard; Canvases / Users /
+    │   │                       # Drawings tabs; uses service-role Supabase client
+    │   ├── AdminScreen.css
     │   ├── ChordSheetScreen.tsx   # Chord diagram grid; guitar voicings for active
     │   │                          # drawings sorted left→right; Web Share / clipboard
     │   ├── ChordSheetScreen.css
     │   ├── DiscoverScreen.tsx     # Placeholder — "coming soon"
-    │   ├── SharedCanvasScreen.tsx # Placeholder — reads :slug param, no data yet
+    │   ├── SharedCanvasScreen.tsx # Placeholder — reads :slug param, renders nothing
     │   └── PlaceholderScreen.css
     │
     ├── store/
-    │   ├── drawingsStore.ts    # DrawingObject[] state; add/update/remove/clear/shuffle
+    │   ├── drawingsStore.ts    # DrawingObject[] state; add/update/merge/remove/
+    │   │                       # toggleHidden/setVolume/clear/shuffle;
+    │   │                       # Supabase sync (initial fetch + realtime channel);
+    │   │                       # optimistic UI with rollback on rejection
+    │   ├── sessionStore.ts     # Anonymous auth init; userId, username, canvasId,
+    │   │                       # needsUsername, isLoaded; setUsername action
     │   ├── tempoStore.ts       # { bpm, setBpm } — single source of truth for tempo
     │   ├── toastStore.ts       # { toasts, showToast, dismissToast } — auto-dismiss
     │   └── useAppStore.ts      # { isPlaying } — currently unused placeholder
     │
     └── utils/
-        ├── audioEngine.ts      # 9 Web Audio synth functions + unlockAudio() +
-        │                       # playChord() dispatch entry point
+        ├── audioEngine.ts      # 9 Web Audio synth functions; global reverb convolver;
+        │                       # per-drawing GainNode map; unlockAudio(), playChord(),
+        │                       # setDrawingVolume(), removeDrawingGain()
         ├── beatPosition.ts     # seededRandom() + assignBeatPosition() — deterministic
         │                       # beat slot from drawing ID × instrument
         ├── colorNaming.ts      # STUB (not yet implemented)
@@ -87,7 +105,8 @@ concerto-web/
         ├── pathSimplify.ts     # STUB (not yet implemented)
         ├── pathUtils.ts        # buildSmoothPath(), computeBoundingBox(), Point/BoundingBox
         ├── slugGenerator.ts    # STUB (not yet implemented)
-        ├── soundMapping.ts     # mapDrawingToSound() — bbox geometry → note/chord/freq
+        ├── soundMapping.ts     # mapDrawingToSound() — bbox geometry → diatonic note/
+        │                       # chord/freq within GLOBAL_KEY + GLOBAL_SCALE
         └── strokeGrouping.ts   # Groupable interface, bboxDistance(), unionBoundingBox(),
                                 # findGroupTarget() — proximity + time window merge logic
 ```
@@ -103,7 +122,8 @@ concerto-web/
 | `react` | ^18.3.1 | UI framework |
 | `react-dom` | ^18.3.1 | DOM renderer |
 | `react-router-dom` | ^6.30.3 | Client-side routing (`BrowserRouter`) |
-| `zustand` | ^5.0.13 | Global state (drawings, tempo, toasts) |
+| `zustand` | ^5.0.13 | Global state (drawings, session, tempo, toasts) |
+| `@supabase/supabase-js` | ^2.105.4 | Auth, database, realtime subscriptions |
 | `@use-gesture/react` | ^10.3.1 | Pinch-to-zoom / two-finger pan on touch devices |
 
 ### Dev
@@ -112,11 +132,11 @@ concerto-web/
 |---|---|---|
 | `vite` | ^5.4.0 | Build tool and dev server |
 | `@vitejs/plugin-react` | ^4.3.0 | Babel-based React fast refresh |
-| `typescript` | ~5.5.0 | Type checker |
+| `typescript` | ^6.0.3 | Type checker |
 | `@types/react` | ^18.3.0 | React type definitions |
 | `@types/react-dom` | ^18.3.0 | ReactDOM type definitions |
-
-No Supabase client, no testing framework, no CSS preprocessor — all vanilla as of this writing.
+| `@types/node` | ^25.6.2 | Node type definitions (used in vite config) |
+| `gh-pages` | ^6.3.0 | `npm run deploy` pushes `dist/` to `gh-pages` branch |
 
 ---
 
@@ -128,6 +148,7 @@ No Supabase client, no testing framework, no CSS preprocessor — all vanilla as
 | `/chords` | `ChordSheetScreen` | Fully implemented |
 | `/discover` | `DiscoverScreen` | Placeholder |
 | `/s/:slug` | `SharedCanvasScreen` | Placeholder — reads slug, renders nothing |
+| `/admin` | `AdminScreen` | Fully implemented; password-gated |
 
 ---
 
@@ -137,41 +158,84 @@ Defined in `src/store/drawingsStore.ts`.
 
 ```typescript
 export interface DrawingObject {
-  id:           string;       // "stroke-{base36 timestamp}-{base36 counter}"
-  path:         string;       // SVG path data (may contain multiple M subpaths after grouping)
-  boundingBox:  BoundingBox;  // { x, y, width, height } in canvas coordinates
+  id:           string;          // UUID (crypto.randomUUID() at creation)
+  userId:       string;          // auth.users.id of the creator; used for ownership checks
+  canvasId:     string;          // FK to canvases.id
+  path:         string;          // SVG path data; may contain multiple M subpaths after merges
+  boundingBox:  BoundingBox;     // { x, y, width, height } in canvas coordinates
   position:     { x: number; y: number };  // top-left of boundingBox
-  strokeColor:  string;       // hex, e.g. "#E84040"
-  strokeWidth:  number;       // always 4 (constant STROKE_WIDTH in Canvas.tsx)
-  instrument:   InstrumentName;
-  isActive:     boolean;      // false = muted; drawing still rendered
-  isLocked:     boolean;      // true = excluded from shuffle and stroke grouping
-  createdAt:    number;       // Date.now() at creation; refreshed on each group merge
-  soundMapping: SoundMapping; // { note, chord, frequency[], instrument }
-  beatPosition: number;       // 1 | 1.5 | 2 | 2.5 | 3 | 3.5 | 4 | 4.5
-                              // assigned at creation from seeded random; re-assigned on shuffle
+  strokeColor:  string;          // hex, e.g. "#E84040"
+  strokeWidth:  number;          // always 4 (STROKE_WIDTH constant)
+  instrument:   InstrumentName;  // derived from strokeColor via getInstrumentForColor()
+  isActive:     boolean;         // false if toggled off in DrawingPanel
+  isLocked:     boolean;         // true = excluded from shuffle and stroke grouping
+  isMuted:      boolean;         // session-only; audio loop skips muted drawings;
+                                 // cleared automatically when isActive is toggled
+  volume:       number;          // per-drawing volume 0–100; default 70; persisted to DB
+  createdAt:    number;          // Date.now() at creation; refreshed on each group merge
+  soundMapping: SoundMapping;    // { note, chord, frequency[], instrument }
+  beatPosition: number;          // 1 | 1.5 | 2 | 2.5 | 3 | 3.5 | 4 | 4.5
+                                 // seeded from id × instrument; re-assigned on shuffle
 }
 ```
 
-`BoundingBox` and `SoundMapping` are defined in `src/utils/pathUtils.ts` and `src/utils/soundMapping.ts` respectively.
+`BoundingBox` is defined in `src/utils/pathUtils.ts`.  
+`SoundMapping` is defined in `src/utils/soundMapping.ts`.
+
+### Store also holds
+
+```typescript
+hiddenIds: Set<string>  // other users' drawing IDs hidden locally; persisted to localStorage
+```
+
+---
+
+## Supabase Schema
+
+Tables: `canvases`, `users`, `drawings`, `shared_snapshots`.
+
+Key `drawings` columns (relevant to the client):
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | uuid | primary key |
+| `canvas_id` | uuid | FK → canvases |
+| `user_id` | uuid | FK → auth.users |
+| `path_data` | text | SVG path string |
+| `bounding_box` | jsonb | `{ x, y, width, height }` |
+| `canvas_position` | jsonb | `{ x, y }` top-left |
+| `color` | text | hex string |
+| `instrument` | text | InstrumentName |
+| `note` | text | root note name, e.g. "E4" |
+| `chord` | jsonb | string[] of note names |
+| `frequencies` | jsonb | number[] in Hz |
+| `beat_position` | numeric | 1–4.5 |
+| `volume` | numeric | 0–100, default 70 |
+| `is_deleted` | boolean | soft-delete flag |
+| `created_at` | timestamptz | |
+
+**SQL migration required for `volume` on existing databases:**
+```sql
+ALTER TABLE drawings ADD COLUMN IF NOT EXISTS volume numeric NOT NULL DEFAULT 70;
+```
 
 ---
 
 ## Instrument Palette
 
-Nine instruments, one per color swatch. All synths are implemented in `src/utils/audioEngine.ts` using the Web Audio API only (no external audio library).
+Nine instruments, one per color swatch. All synths are in `src/utils/audioEngine.ts` using the Web Audio API only (no external audio library). All connect through a global reverb convolver and master `DynamicsCompressor`.
 
 | Hex | Label | Instrument | Synthesis character |
 |---|---|---|---|
-| `#E84040` | 808 | `808 bass` | Sine osc; pitch drops from `freq` to `freq × 0.8` over 300 ms; long sustain, slow exponential release; low-pass Q=2.2. Fires every 2 beats. |
-| `#E87830` | KICK | `kick drum` | Fixed 150 → 40 Hz sine sweep (80 ms) + 12 ms noise click transient; `DynamicsCompressor` hard limiter. Fires on beat 1 of each measure. |
-| `#D4A028` | SNARE | `snare drum` | White noise through bandpass at 2000 Hz (Q=1.33 ≈ 1500–3000 Hz); 2 ms attack, 120 ms decay. Fires on beats 2 and 4. |
-| `#D4CC48` | HHAT | `hi-hat` | White noise through highpass >8 kHz; alternates closed (40 ms) / open (200 ms) on every beat. |
-| `#96C440` | CHIME | `chimes` | Triangle osc; ±15% velocity randomization per trigger; 6-tap multi-delay reverb tail (up to 1.6 s). |
-| `#58C498` | PAD | `synth pad` | Three detuned sawtooths (±9 cents); 400 ms attack, 600 ms release swell; gentle low-pass. Fires every 4 beats (once per measure). |
-| `#4A90E8` | HORN | `horn/bass` | Square wave through 900 Hz bandpass (50/50 wet/dry); 80 ms attack; ±3 Hz LFO pitch wobble (breath); decays at ~35% of beat duration. |
-| `#A09CFF` | LEAD | `synth lead` | Sawtooth, 13 ms attack, 5.5 Hz LFO vibrato; staccato gate cuts off at 60% of beat duration. |
-| `#D46E88` | VOX | `vocal pad` | Sawtooth through parallel "ah" formant bandpass filters (650 / 1100 / 2700 Hz); 600 ms attack; 800 ms release. Lowest gain of all pads. |
+| `#E84040` | 808 | `808 bass` | Three sine harmonics (1×, 2×, 3×); pitch drops from `freq` to `freq × 0.8` over 300 ms; WaveShaperNode soft-clip; lowpass Q=2.2. Fires every 2 beats. |
+| `#E87830` | KICK | `kick drum` | Fixed 150→40 Hz sine sweep (80 ms) + 12 ms noise click transient; local hard-limiter (`DynamicsCompressor` threshold −3 dB, ratio 20). Fires on beat 1 only. |
+| `#D4A028` | SNARE | `snare drum` | White noise through bandpass at 2000 Hz (Q=1.33); 2 ms attack, 120 ms decay. Fires on beats 2 and 4. |
+| `#D4CC48` | HHAT | `hi-hat` | White noise through highpass >8 kHz; alternates closed (40 ms) / open (200 ms) on every quarter note. |
+| `#96C440` | CHIME | `chimes` | Four inharmonic sine partials (1.000×, 2.756×, 5.404×, 8.933×); higher partials decay faster; ±15% velocity randomization per trigger. |
+| `#58C498` | PAD | `synth pad` | Two detuned sawtooths per chord tone (±7 cents); LPF sweeps 300→2500 Hz over 400 ms attack; 600 ms release swell. Fires once per measure. |
+| `#4A90E8` | HORN | `horn/bass` | Additive synthesis: odd harmonics 1, 3, 5, 7× (closed-cylinder series); WaveShaperNode (25 units); LPF at 3200 Hz; ±3 Hz LFO breath on fundamental. |
+| `#A09CFF` | LEAD | `synth lead` | Four additive sine harmonics (1×, 2×, 3×, 4×); 5 ms portamento glide between notes; 1/8-note feedback delay (30% FB, 28% wet); ±12 cents LFO vibrato on detune. |
+| `#D46E88` | VOX | `vocal pad` | Sawtooth through two parallel formant bandpass filters (800 Hz / Q=10, 1200 Hz / Q=15); 600 ms attack; 800 ms release. |
 
 ### Mix Gain Constants (`INSTRUMENT_GAIN` in `instrumentMap.ts`)
 
@@ -181,13 +245,19 @@ kick drum:  1.00   snare drum: 0.90   hi-hat: 0.50
 chimes:     0.60   synth pad:  0.55   vocal pad: 0.45
 ```
 
-Applied as: `peak = 0.38 (AMPLITUDE) × 0.45 (LOOP_VOLUME) × INSTRUMENT_GAIN[instrument]`
+Signal chain per drawing:
+`synth → perDrawingGainNode (drawing.volume / 100) → masterComp → ctx.destination`  
+`synth → reverbSend → convolverNode → reverbReturn → masterComp` (parallel, bypasses per-drawing gain)
+
+Effective peak: `AMPLITUDE (0.38) × LOOP_VOLUME (0.45) × INSTRUMENT_GAIN × drawingGain`
 
 ---
 
 ## Audio Scheduling
 
-`src/hooks/useAmbientLoop.ts` runs a self-scheduling `setTimeout` loop at **8th-note resolution** (`beatMs / 2`). The global tick counter (`tickRef`) never resets.
+`src/hooks/useAmbientLoop.ts` runs a self-scheduling `setTimeout` loop at **8th-note resolution** (`beatMs / 2`). Uses a `nextTickTimeRef` wall-clock anchor to prevent cumulative drift — each tick advances by exactly one `cycleMs`, and the next `setTimeout` delay is computed as `nextTickTimeRef − Date.now()`. The global tick counter (`tickRef`) never resets.
+
+`unlockAudio()` is called on the first `pointerdown` anywhere on the page (not just on the canvas), ensuring audio plays as soon as drawings load.
 
 ### `shouldFire(instrument, tick, beatPosition)` — gating rules
 
@@ -198,7 +268,7 @@ Applied as: `peak = 0.38 (AMPLITUDE) × 0.45 (LOOP_VOLUME) × INSTRUMENT_GAIN[in
 | hi-hat | `tick % 2 === 0` (every quarter note) |
 | 808 bass | `tick % 8 === 0 \|\| tick % 8 === 4` (every 2 beats) |
 | synth pad | `tick % 8 === 0` (downbeat of every measure) |
-| vocal pad | `tick % 16 === beatPosToTick(beatPosition)` (every 2 measures) |
+| vocal pad | `tick % 16 === beatPosToTick(beatPosition)` (every 2 measures at assigned slot) |
 | chimes / horn / lead | `tick % 8 === beatPosToTick(beatPosition)` (every measure at assigned slot) |
 
 `beatPosToTick(p) = Math.round((p − 1) × 2)` maps beat positions 1…4.5 to tick offsets 0…7.
@@ -209,7 +279,7 @@ Each drawing's `beatPosition` is seeded from its `id` string via a deterministic
 
 | Instrument | Weighted slot pool |
 |---|---|
-| chimes | `[1,1, 2,2, 3,3, 4,4, 2.5, 4.5]` — on-beats 2× the weight of off-beats |
+| chimes | `[1, 1, 2, 2, 3, 3, 4, 4, 2.5, 4.5]` — on-beats 2× the weight of off-beats |
 | horn/bass | `[1, 3]` — downbeats only |
 | synth lead | `[2, 3, 4]` — never beat 1 (avoids kick clash) |
 | vocal pad | `[1, 3]` — same pool as horns; rate controlled by scheduler |
@@ -217,13 +287,38 @@ Each drawing's `beatPosition` is seeded from its `id` string via a deterministic
 
 `beatPosition` is recomputed when the instrument changes via shuffle.
 
+### Per-Drawing Phase Humanization
+
+Each drawing has a deterministic ±30 ms phase nudge (`seededPhase(id)`) seeded from `id + '\x01'` — a different LCG suffix than `beatPosition.ts` to prevent correlation between a drawing's beat slot and its timing nudge. Combined with the spatial left-to-right delay (0–`maxOff` ms based on canvas X position), the final play delay per drawing is:
+
+```
+delay = max(0, spatialOffset + phaseNudge)
+```
+
+---
+
+## Sound Mapping (`src/utils/soundMapping.ts`)
+
+All melodic drawings are mapped into **GLOBAL_SCALE** (C major by default, defined in `src/constants/musicalKey.ts`). Changing `GLOBAL_KEY` and `GLOBAL_SCALE` retunes the entire canvas with no other changes needed.
+
+| Geometry dimension | Maps to |
+|---|---|
+| Bounding-box diagonal length | Scale degree index (short stroke → high degree, long → low degree) |
+| Bounding-box area | Octave 3–6 (small area → octave 6, large area → octave 3) |
+
+Chord type: always a **diatonic triad** (scale degrees 1-3-5 walking GLOBAL_SCALE from the root). No chromatic clashes are possible. No frequency jitter.
+
+Percussion instruments (`kick drum`, `snare drum`, `hi-hat`) return a fixed C2 placeholder; their synth functions ignore the frequency array entirely.
+
+Output shape: `{ note: "E4", chord: ["E4", "G4", "B4"], frequency: [329.63, 392.00, 493.88], instrument }`.
+
 ---
 
 ## Stroke Grouping
 
-`src/utils/strokeGrouping.ts` + `src/components/Canvas.tsx` `finishStroke`.
+`src/utils/strokeGrouping.ts` + `Canvas.tsx` `finishStroke`.
 
-When a stroke is committed, `findGroupTarget` scans existing drawings for one that meets all three conditions simultaneously:
+When a stroke is committed, `findGroupTarget` scans existing own-user drawings for one meeting all three conditions simultaneously:
 
 1. **Same color** (same instrument)
 2. **`createdAt` within `STROKE_GROUP_WINDOW_MS` (2000 ms)**
@@ -231,34 +326,27 @@ When a stroke is committed, `findGroupTarget` scans existing drawings for one th
 
 Bounding-box distance is the Euclidean minimum gap between two AABBs (0 when overlapping).
 
-On a match, `Canvas.tsx` performs the merge inline:
-- Appends new SVG path data (`target.path + ' ' + incomingPath`) so both strokes render as one `<path>` element
-- Unions the bounding boxes
-- Re-runs `mapDrawingToSound` on the combined geometry
-- Calls `updateDrawing(target.id, ...)` — no new store row
-- Resets `createdAt: Date.now()` on the target to extend the window for the next stroke
+On a match, `Canvas.tsx` merges inline: appends SVG path data, unions bounding boxes, re-runs `mapDrawingToSound` on combined geometry, calls `mergeDrawing(target.id, ...)`, resets `createdAt` to extend the window. A `MergeRing` SVG circle (r: 0→60, opacity: 0.8→0, 600 ms) fires at the merged drawing's centre. Locked drawings cannot be merged into.
 
-A `MergeRing` SVG circle (r: 0 → 60, opacity: 0.8 → 0, 600 ms) is rendered at the merged drawing's centre using the Web Animations API. Locked drawings cannot receive new strokes via grouping.
-
-Both constants are tunable in `src/constants/limits.ts`:
+Constants are tunable in `src/constants/limits.ts`:
 ```typescript
 export const STROKE_GROUP_WINDOW_MS    = 2000;
 export const STROKE_GROUP_PROXIMITY_PX = 200;
+export const CANVAS_WIDTH  = 8000;
+export const CANVAS_HEIGHT = 8000;
 ```
 
 ---
 
-## Sound Mapping Logic (`src/utils/soundMapping.ts`)
+## Supabase Sync
 
-Each drawing maps deterministically to a note and chord in **C major pentatonic**:
+`drawingsStore.ts` handles all backend sync. It runs once when `sessionStore` signals `isLoaded && canvasId`.
 
-| Geometry | Maps to |
-|---|---|
-| Bounding-box diagonal length | Scale degree (short → high A, long → low C) |
-| Horizontal centre of bbox | Octave 3–6 (left → bass, right → treble) |
-| Aspect ratio (width / height) | Chord quality (wide → major, tall → minor) |
+**Initial hydration:** fetches all non-deleted drawings for the canvas, merges them into the store (preserving any optimistic drawings created during the async fetch — existing IDs are skipped).
 
-Output: `{ note: "E5", chord: ["E5","G#5","B5"], frequency: [659.25, 830.61, 987.77], instrument }`.
+**Realtime channel:** subscribes to `postgres_changes` on `drawings` filtered by `canvas_id`. On INSERT from another user, adds to store. On UPDATE with `is_deleted: true`, removes from store. On UPDATE from another user's merge, updates geometry/sound while preserving local client-only state (`isActive`, `isLocked`, `isMuted`).
+
+**Optimistic writes:** `addDrawing` writes to store immediately, then invokes the `create-drawing` Edge Function. On 4xx rejection (rate limit, drawing cap, canvas inactive), rolls back and shows a toast. On 404/5xx/network failure, falls back to a direct Supabase insert.
 
 ---
 
@@ -267,18 +355,31 @@ Output: `{ note: "E5", chord: ["E5","G#5","B5"], frequency: [659.25, 830.61, 987
 - Freehand drawing on an infinite canvas with smooth quadratic Bézier paths
 - Pan (two-finger drag, mouse wheel) and pinch-to-zoom (0.15× – 8×)
 - 9-instrument color picker; swatch taps correctly isolated from canvas pointer events
-- `mapDrawingToSound` — deterministic pitch/octave/chord from stroke geometry
-- All 9 Web Audio synths with distinct timbres and gain staging
+- Anonymous Supabase auth (`signInAnonymously`); session persisted across reloads
+- Username modal on first visit with validation (3–20 chars, alphanumeric + underscore)
+- Real-time multi-user drawing sync via Supabase Realtime postgres_changes
+- Optimistic UI with rollback on server rejection (rate limit, cap, inactive canvas)
+- `mapDrawingToSound` — diatonic, in-scale notes/chords with no frequency jitter
+- All 9 Web Audio synths with distinct timbres and global reverb + master compressor
+- Per-drawing GainNode: volume slider 0–100 per drawing with `setTargetAtTime` smooth ramping
+- Volume persisted to Supabase with 400 ms debounce
+- Muted state disables slider; `isActive` toggle always clears mute
+- Other users' drawings hideable from canvas (client-only, persisted to localStorage)
 - Tempo slider (40–180 BPM) and tap-tempo (up to 8-tap average, 3 s reset window)
-- 8th-note-resolution beat scheduler with per-instrument rhythm patterns
-- Deterministic, ID-seeded beat positions for chimes / horn / lead / vocal
+- 8th-note scheduler with anti-drift wall-clock anchoring
+- Per-instrument rhythm patterns + seeded beat positions for chimes/horn/lead/vocal
+- Per-drawing ±30 ms seeded phase humanization independent of beat slot
+- Spatial left→right playback delay proportional to canvas X position
+- Polyphony cap: at most 5 concurrent voices per tick (sampled randomly above cap)
 - Stroke grouping with 2 s window + 200 px proximity merge + MergeRing pulse
-- DrawingPanel: toggle active, lock, delete, shuffle sound mappings
+- DrawingPanel: mute toggle, per-drawing volume slider, delete (own), hide (others), shuffle
 - Shuffle correctly reseeds `beatPosition` to match the new instrument
-- ChordSheetScreen: chord diagrams ordered left → right by canvas X position; Web Share API with clipboard fallback
+- Admin panel (`/admin`): list/create/activate canvases; view/remove users; view/delete/nuke drawings
+- ChordSheetScreen: chord diagrams ordered left→right by canvas X position; Web Share API with clipboard fallback
 - 3-slide onboarding overlay with swipe navigation; `localStorage` dismissal
 - Toast notification system (auto-dismiss, stacks)
 - PWA manifest with icons
+- GitHub Actions CI deploy to GitHub Pages on push to `main`
 
 ---
 
@@ -291,32 +392,31 @@ Output: `{ note: "E5", chord: ["E5","G#5","B5"], frequency: [659.25, 830.61, 987
 | `utils/slugGenerator.ts` | Stub | Required for share-URL generation; not yet implemented |
 | `store/useAppStore.ts` | Dead code | `isPlaying` state exists but nothing reads or writes it |
 | `DiscoverScreen` | Placeholder | "coming soon" text only; no backend feed |
-| `SharedCanvasScreen` | Placeholder | Reads `:slug` param; renders no data |
+| `SharedCanvasScreen` | Placeholder | Reads `:slug` param; renders nothing |
 | Onboarding copy | Mismatch | Slide 3 says "export as PNG" — no PNG export is implemented |
-| `ChordSheetScreen` voicings | Partial | Guitar voicings cover only 10 named chords; anything else falls back to an all-muted diagram |
-| Hi-hat `beatPosition` | Inert | Always `1` (sentinel); hi-hat fires on every beat regardless of assigned slot |
-| Low-BPM xOffset | Edge case | At ≤ 55 BPM, spatial spread can approach 40% of `cycleMs`, causing drawings near the right edge to audibly bleed into the next beat |
-| No persistence | By design (for now) | Drawings live only in Zustand memory; a page refresh clears everything |
+| `ChordSheetScreen` voicings | Partial | Guitar voicings cover only 10 named chords (C/D/E/G/A major + minor); anything else falls back to an all-muted diagram |
+| Hi-hat `beatPosition` | Inert | Always `1` (sentinel); hi-hat fires on every quarter note regardless |
+| Reverb not gated by per-drawing volume | By design (MVP) | Reverb sends originate from synth internals before the per-drawing GainNode; reducing drawing volume quiets the dry signal but not the reverb tail |
+| `VITE_ADMIN_SERVICE_KEY` in bundle | Security note | Inlined at build time; the service-role key is extractable from the JS bundle. Acceptable for a small-scale project; should be moved behind a server-side proxy for any public deployment |
+| `DEBUG_FORCE_MODAL = false` | Leftover debug flag | `UsernameModal.tsx` line 9; harmless but should be removed before a clean release |
+| `volume` column migration | Manual step required | Existing Supabase instances need `ALTER TABLE drawings ADD COLUMN IF NOT EXISTS volume numeric NOT NULL DEFAULT 70;` |
 
 ---
 
-## Next Steps
+## Remaining Prompt Queue
 
-### Backend — Queued (Prompts 13–21 from original plan)
+Work proceeds in this order. Each label corresponds to a prompt document in the project's prompt queue.
 
-The next major phase is Supabase integration. Planned work in order:
-
-1. **Anonymous sessions** — create or restore a Supabase anonymous user on first load; store `session_id` in `localStorage`
-2. **Drawing sync** — persist `DrawingObject` rows to a `drawings` table in real time; `addDrawing` / `updateDrawing` / `removeDrawing` mirror to Supabase
-3. **Slug-based sharing** — implement `slugGenerator.ts`; write a `canvases` table row on share; `SharedCanvasScreen` fetches and renders read-only drawings by slug
-4. **Row-level security (RLS)** — anonymous users can only read/write their own rows; shared canvases are publicly readable by slug
-5. **Discover feed** — `DiscoverScreen` queries recently shared canvases; infinite scroll or paginated grid
-
-`colorNaming.ts` and `pathSimplify.ts` stubs will be filled in as part of this phase (color names for the Discover feed; path simplification before writing SVG data to the database to stay within column size limits).
-
-### Viewport Mode — Deprioritized, Not Abandoned (Prompt A5)
-
-The original plan included a "Viewport Mode" that would lock the canvas transform and shift the interaction model from free-draw to a performance view: strokes trigger audio on tap rather than at loop cadence, drawings are displayed full-screen with visual feedback proportional to their sound. This feature is deliberately parked until the backend is stable. Nothing in the current architecture blocks it — `isPlaying` in `useAppStore` was scaffolded with this mode in mind.
+| Label | Feature | Notes |
+|---|---|---|
+| **G5** | — | Next queued prompt |
+| **G6** | — | |
+| **G7** | — | |
+| **G8** | — | |
+| **G9** | — | |
+| **G10** | — | |
+| **M7** | Chord sheet export | Image / PDF export of the ChordSheetScreen; replaces the placeholder slide-3 onboarding copy |
+| **A5** | Viewport Mode | Deprioritized. Lock canvas transform; tap-to-trigger audio instead of loop cadence; full-screen visual feedback per drawing. `isPlaying` in `useAppStore` was scaffolded for this. Nothing in the current architecture blocks it. |
 
 ---
 
