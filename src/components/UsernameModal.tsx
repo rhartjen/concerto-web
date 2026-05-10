@@ -6,7 +6,7 @@ const USER_ID_KEY = 'concerto_user_id';
 const VALID = /^[a-zA-Z0-9_]{3,20}$/;
 
 export default function UsernameModal() {
-  const { needsUsername, setUsername } = useSessionStore();
+  const { isLoaded, needsUsername, setUsername } = useSessionStore();
   const isReturning = Boolean(localStorage.getItem(USER_ID_KEY));
 
   const [value,   setValue]   = useState('');
@@ -14,6 +14,9 @@ export default function UsernameModal() {
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Block the canvas with an opaque layer while the session is initialising so
+  // the modal can't be skipped by a fast render before needsUsername is set.
+  if (!isLoaded) return <div className="username-backdrop" />;
   if (!needsUsername) return null;
 
   function validate(v: string): string | null {

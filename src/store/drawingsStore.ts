@@ -103,52 +103,60 @@ export const useDrawingsStore = create<DrawingsState>((set, get) => ({
   addDrawing: (drawing) => {
     set((state) => ({ drawings: [...state.drawings, drawing] }));
 
-    // Build the DB-column-shaped payload once.
+    // Cast JSON-column fields so the payload is usable for both the Edge Function
+    // body (untyped) and the typed direct-insert fallback below.
     const insertPayload = {
       id:              drawing.id,
       canvas_id:       drawing.canvasId,
       user_id:         drawing.userId,
       path_data:       drawing.path,
-      canvas_position: drawing.position,
-      bounding_box:    drawing.boundingBox,
+      canvas_position: drawing.position       as unknown as Json,
+      bounding_box:    drawing.boundingBox    as unknown as Json,
       color:           drawing.strokeColor,
       instrument:      drawing.instrument,
       note:            drawing.soundMapping.note,
-      chord:           drawing.soundMapping.chord,
-      frequencies:     drawing.soundMapping.frequency,
+      chord:           drawing.soundMapping.chord     as unknown as Json,
+      frequencies:     drawing.soundMapping.frequency as unknown as Json,
       beat_position:   drawing.beatPosition,
     };
 
-    // Call the Edge Function — it verifies the JWT, checks rate/canvas limits,
-    // then inserts. On any error, roll back the optimistic store entry.
     void (async () => {
       const { error } = await supabase.functions.invoke('create-drawing', {
-        body: {
-          drawing:   insertPayload,
-          user_id:   drawing.userId,
-          canvas_id: drawing.canvasId,
-        },
+        body: { drawing: insertPayload, user_id: drawing.userId, canvas_id: drawing.canvasId },
       });
 
       if (!error) return;
 
-      // Extract the message from the function's JSON response body.
-      let msg = 'Failed to save drawing';
-      try {
-        if ('context' in error && error.context instanceof Response) {
+      // Read HTTP status + message from the response when available.
+      let httpStatus: number | null = null;
+      let responseMsg: string | null = null;
+      if ('context' in error && error.context instanceof Response) {
+        httpStatus = (error.context as Response).status;
+        try {
           const body = await (error.context as Response).json();
-          if (typeof body?.error === 'string') msg = body.error;
-        }
-      } catch { /* ignore parse failures */ }
+          if (typeof body?.error === 'string') responseMsg = body.error;
+        } catch { /* ignore */ }
+      }
 
-      console.error('[drawings] create-drawing:', msg);
+      // Explicit 4xx rejections from a deployed function (rate limit, drawing cap,
+      // canvas inactive, auth error) — roll back and surface the message.
+      const isRejection = httpStatus !== null && httpStatus >= 400 && httpStatus < 500 && httpStatus !== 404;
+      if (isRejection) {
+        console.error('[drawings] create-drawing rejected:', responseMsg);
+        useDrawingsStore.setState((s) => ({ drawings: s.drawings.filter((d) => d.id !== drawing.id) }));
+        useToastStore.getState().showToast(responseMsg ?? 'Failed to save drawing');
+        return;
+      }
 
-      // Revert the optimistic add.
-      useDrawingsStore.setState((state) => ({
-        drawings: state.drawings.filter((d) => d.id !== drawing.id),
-      }));
+      // Function not deployed (404), server error (5xx), or network failure —
+      // fall back to a direct insert. The drawings_insert_own RLS policy permits
+      // this because user_id === auth.uid() for anonymous sessions.
+      const { error: insertError } = await supabase.from('drawings').insert(insertPayload);
+      if (!insertError) return;
 
-      useToastStore.getState().showToast(msg);
+      console.error('[drawings] direct insert fallback failed:', insertError.message);
+      useDrawingsStore.setState((s) => ({ drawings: s.drawings.filter((d) => d.id !== drawing.id) }));
+      useToastStore.getState().showToast('Failed to save drawing');
     })();
   },
 

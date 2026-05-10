@@ -59,12 +59,11 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 // Uses setState directly — not a hook.
 
 async function initSession(): Promise<void> {
+  // ── Step 1: Auth ─────────────────────────────────────────────────────────
+  // Separated into its own try/catch: if auth itself fails there is no userId
+  // and we cannot show the modal meaningfully, so we just unblock the UI.
+  let authUserId: string;
   try {
-    // ── Step 1: Restore existing session or create a new anonymous one ───────
-    //
-    // getSession() returns the persisted session from Supabase's localStorage
-    // storage without a network round-trip. signInAnonymously() is only called
-    // when there is genuinely no active session (true first visit).
     let { data: { session } } = await supabase.auth.getSession();
 
     if (!session) {
@@ -73,70 +72,60 @@ async function initSession(): Promise<void> {
       session = data.session;
     }
 
-    if (!session) {
-      console.error('[session] Could not establish an auth session.');
-      useSessionStore.setState({ isLoaded: true });
-      return;
-    }
-
-    const authUserId = session.user.id;
-
-    // ── Step 2: Fetch the main canvas row ────────────────────────────────────
-    //
-    // The canvas UUID is needed before any drawing operations, so we fetch it
-    // early and store it globally. A missing row here is a configuration error
-    // (the seed INSERT in schema.sql should have created it).
-    const { data: canvas, error: canvasError } = await supabase
-      .from('canvases')
-      .select('id')
-      .eq('slug', 'main')
-      .single();
-
-    if (canvasError) {
-      console.error('[session] Failed to load canvas:', canvasError.message);
-    } else {
-      useSessionStore.setState({ canvasId: canvas.id });
-    }
-
-    // ── Step 3: Look up the users row ─────────────────────────────────────────
-    //
-    // Prefer the user_id saved to localStorage from a prior visit. If the
-    // anonymous auth token rotates but the users row still exists under the
-    // old UUID, this lets us reconnect the user to their existing data.
-    // Falls back to the current auth UID for brand-new sessions.
-    const savedUserId = localStorage.getItem(USER_ID_KEY) ?? authUserId;
-
-    const { data: user, error: userError } = await supabase
-      .from('users')
-      .select('id, username')
-      .eq('id', savedUserId)
-      .maybeSingle(); // null data (no error) when the row doesn't exist yet
-
-    if (userError) {
-      console.error('[session] Failed to load user:', userError.message);
-      useSessionStore.setState({ userId: authUserId, isLoaded: true });
-      return;
-    }
-
-    if (user) {
-      // Returning user — refresh the localStorage entry and hydrate the store.
-      localStorage.setItem(USER_ID_KEY, user.id);
-      useSessionStore.setState({
-        userId:   user.id,
-        username: user.username,
-        isLoaded: true,
-      });
-    } else {
-      // First visit (or users row was deleted) — prompt for a username.
-      useSessionStore.setState({
-        userId:        authUserId,
-        needsUsername: true,
-        isLoaded:      true,
-      });
-    }
+    if (!session) throw new Error('No session returned after sign-in');
+    authUserId = session.user.id;
   } catch (err) {
-    console.error('[session] Unexpected init error:', err);
+    console.error('[session] Auth failed:', err);
     useSessionStore.setState({ isLoaded: true });
+    return;
+  }
+
+  // ── Step 2: Canvas (non-fatal) ───────────────────────────────────────────
+  const { data: canvas, error: canvasError } = await supabase
+    .from('canvases')
+    .select('id')
+    .eq('slug', 'main')
+    .single();
+
+  if (canvasError) {
+    console.error('[session] Failed to load canvas:', canvasError.message);
+  } else {
+    useSessionStore.setState({ canvasId: canvas.id });
+  }
+
+  // ── Step 3: User row ─────────────────────────────────────────────────────
+  // Prefer the user_id saved to localStorage from a prior visit. Falls back
+  // to the current auth UID for brand-new sessions.
+  const savedUserId = localStorage.getItem(USER_ID_KEY) ?? authUserId;
+
+  const { data: user, error: userError } = await supabase
+    .from('users')
+    .select('id, username')
+    .eq('id', savedUserId)
+    .maybeSingle();
+
+  if (userError) {
+    // DB error (e.g. schema not yet applied, RLS policy). We have a valid auth
+    // session, so show the modal anyway — the insert attempt will surface the
+    // real error if the table still doesn't exist.
+    console.error('[session] Failed to load user:', userError.message);
+    useSessionStore.setState({ userId: authUserId, needsUsername: true, isLoaded: true });
+    return;
+  }
+
+  if (user) {
+    localStorage.setItem(USER_ID_KEY, user.id);
+    useSessionStore.setState({
+      userId:   user.id,
+      username: user.username,
+      isLoaded: true,
+    });
+  } else {
+    useSessionStore.setState({
+      userId:        authUserId,
+      needsUsername: true,
+      isLoaded:      true,
+    });
   }
 }
 
