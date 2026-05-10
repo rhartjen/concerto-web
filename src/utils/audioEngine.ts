@@ -14,7 +14,10 @@ type SynthFn = (
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
-const AMPLITUDE = 0.38;
+const AMPLITUDE      = 0.38;
+// High-pass cutoff for all melodic instruments — keeps them out of the low end
+// where kick and 808 bass live.
+const HPF_CUTOFF_HZ  = 80;
 
 // Fraction of each instrument's output routed into the reverb convolver.
 const WET: Record<InstrumentName, number> = {
@@ -70,11 +73,11 @@ function ensureGraph(): void {
   if (!ctx || masterComp) return;
 
   masterComp = ctx.createDynamicsCompressor();
-  masterComp.threshold.value = -18;
+  masterComp.threshold.value = -24;   // catch melodic peaks without squashing drums
   masterComp.knee.value      =   8;
-  masterComp.ratio.value     =   3;
-  masterComp.attack.value    = 0.003;
-  masterComp.release.value   = 0.25;
+  masterComp.ratio.value     =   4;
+  masterComp.attack.value    = 0.005; // 5 ms — fast enough to catch transients
+  masterComp.release.value   = 0.10;  // 100 ms — snappy release keeps drums punchy
   masterComp.connect(ctx.destination);
 
   reverbNode = ctx.createConvolver();
@@ -135,6 +138,17 @@ function later(delaySec: number, ...nodes: AudioNode[]): void {
   setTimeout(() => {
     for (const n of nodes) { try { n.disconnect(); } catch { /* already gone */ } }
   }, delaySec * 1000);
+}
+
+// Insert an 80 Hz high-pass filter between a melodic synth and its destination.
+// Keeps melodic instruments out of the low end where kick and 808 bass live.
+function addHpf(ac: AudioContext, dest: AudioNode): BiquadFilterNode {
+  const f = ac.createBiquadFilter();
+  f.type = 'highpass';
+  f.frequency.value = HPF_CUTOFF_HZ;
+  f.Q.value = 0.5; // gentle slope, no resonance bump
+  f.connect(dest);
+  return f;
 }
 
 // Route a fraction of `signal` into the global reverb convolver.
@@ -329,7 +343,8 @@ const BELL_PARTIALS = [
 ] as const;
 
 function synthChimes(ac: AudioContext, dest: AudioNode, freqs: number[], duration: number, peak: number): void {
-  const now = ac.currentTime;
+  const now    = ac.currentTime;
+  const hpDest = addHpf(ac, dest);
 
   for (const freq of freqs) {
     const n       = freqs.length;
@@ -342,7 +357,7 @@ function synthChimes(ac: AudioContext, dest: AudioNode, freqs: number[], duratio
       env.gain.setValueAtTime(0, now);
       env.gain.linearRampToValueAtTime((peak / n) * hGain * velMult, now + 0.012);
       env.gain.exponentialRampToValueAtTime(0.001, now + partialDur);
-      env.connect(dest);
+      env.connect(hpDest);
       const send = sendToReverb(env, WET['chimes']);
 
       const osc = ac.createOscillator();
@@ -355,6 +370,7 @@ function synthChimes(ac: AudioContext, dest: AudioNode, freqs: number[], duratio
       later(partialDur + 0.1, env, send);
     }
   }
+  later(duration + 0.15, hpDest);
 }
 
 // ── Synth Pad ──────────────────────────────────────────────────────────────────
@@ -367,13 +383,14 @@ function synthPad(ac: AudioContext, dest: AudioNode, freqs: number[], duration: 
   const now        = ac.currentTime;
   const attackTime = 0.40;
   const releaseAt  = Math.max(now + attackTime + 0.1, now + duration - 0.60);
+  const hpDest     = addHpf(ac, dest);
 
   const lpf = ac.createBiquadFilter();
   lpf.type = 'lowpass';
   lpf.frequency.setValueAtTime(300, now);
   lpf.frequency.exponentialRampToValueAtTime(2500, now + attackTime);
   lpf.Q.value = 0.5;
-  lpf.connect(dest);
+  lpf.connect(hpDest);
   const send = sendToReverb(lpf, WET['synth pad']);
 
   const perVoice = peak / (freqs.length * PAD_DETUNE.length);
@@ -397,7 +414,7 @@ function synthPad(ac: AudioContext, dest: AudioNode, freqs: number[], duration: 
     }
   }
 
-  later(duration + 0.3, lpf, send);
+  later(duration + 0.3, lpf, send, hpDest);
 }
 
 // ── Horns / Brass ──────────────────────────────────────────────────────────────
@@ -417,11 +434,12 @@ function synthHorns(ac: AudioContext, dest: AudioNode, freqs: number[], duration
   const attackTime = 0.08;
   const decayAt    = now + duration * 0.35;
   const normGain   = 1 / BRASS_HARMONICS.reduce((s, h) => s + h.gain, 0);
+  const hpDest     = addHpf(ac, dest);
 
   const shaper = ac.createWaveShaper();
   shaper.curve      = softClipCurve(25);
   shaper.oversample = '2x';
-  shaper.connect(dest);
+  shaper.connect(hpDest);
   const send = sendToReverb(shaper, WET['horn/bass']);
 
   const lpf = ac.createBiquadFilter();
@@ -470,7 +488,7 @@ function synthHorns(ac: AudioContext, dest: AudioNode, freqs: number[], duration
     later(duration + 0.3, env, sumGain, lfoGain);
   }
 
-  later(duration + 0.3, lpf, shaper, send);
+  later(duration + 0.3, lpf, shaper, send, hpDest);
 }
 
 // ── Synth Lead ─────────────────────────────────────────────────────────────────
@@ -490,6 +508,7 @@ function synthLead(ac: AudioContext, dest: AudioNode, freqs: number[], duration:
   const attackEnd  = now + 0.013;
   const releaseAt  = now + duration * 0.60;
   const normGain   = 1 / LEAD_HARMONICS.reduce((s, h) => s + h.gain, 0);
+  const hpDest     = addHpf(ac, dest);
 
   // 1/8-note delay tempo-synced to the current BPM.
   const bpm           = useTempoStore.getState().bpm;
@@ -505,7 +524,7 @@ function synthLead(ac: AudioContext, dest: AudioNode, freqs: number[], duration:
   delayNode.connect(feedbackGain);
   feedbackGain.connect(delayNode); // feedback loop
   delayNode.connect(delayWet);
-  delayWet.connect(dest);
+  delayWet.connect(hpDest);
   const delaySend = sendToReverb(delayWet, WET['synth lead']);
 
   // Capture portamento start before the loop mutates lastLeadFreq.
@@ -517,7 +536,7 @@ function synthLead(ac: AudioContext, dest: AudioNode, freqs: number[], duration:
     env.gain.linearRampToValueAtTime(peak / freqs.length, attackEnd);
     env.gain.setValueAtTime(peak / freqs.length, releaseAt);
     env.gain.linearRampToValueAtTime(0, now + duration);
-    env.connect(dest);
+    env.connect(hpDest);
     env.connect(delayNode);
 
     const sumGain = ac.createGain();
@@ -559,7 +578,7 @@ function synthLead(ac: AudioContext, dest: AudioNode, freqs: number[], duration:
 
   // Delay tail: give enough time for 8 feedback bounces to decay.
   const tailSec = Math.min(eighthNoteSec * 8, 4.0);
-  later(duration + tailSec + 0.5, delayNode, feedbackGain, delayWet, delaySend);
+  later(duration + tailSec + 0.5, delayNode, feedbackGain, delayWet, delaySend, hpDest);
 }
 
 // ── Vocal Pad ──────────────────────────────────────────────────────────────────
@@ -576,6 +595,7 @@ function synthVocal(ac: AudioContext, dest: AudioNode, freqs: number[], duration
   const now       = ac.currentTime;
   const attackEnd = now + 0.60;
   const releaseAt = Math.max(attackEnd + 0.1, now + duration - 0.80);
+  const hpDest    = addHpf(ac, dest);
 
   for (const baseFreq of freqs) {
     const osc = ac.createOscillator();
@@ -605,13 +625,14 @@ function synthVocal(ac: AudioContext, dest: AudioNode, freqs: number[], duration
     env.gain.setValueAtTime(0.84, releaseAt);
     env.gain.linearRampToValueAtTime(0, now + duration);
     fmix.connect(env);
-    env.connect(dest);
+    env.connect(hpDest);
     const send = sendToReverb(env, WET['vocal pad']);
 
     osc.start(now);
     osc.stop(now + duration + 0.1);
     later(duration + 0.3, preGain, fmix, env, send);
   }
+  later(duration + 0.4, hpDest);
 }
 
 // ── Dispatch table ─────────────────────────────────────────────────────────────
