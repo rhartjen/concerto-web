@@ -9,7 +9,7 @@ import AdminScreen        from './screens/AdminScreen';
 
 export default function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={import.meta.env.BASE_URL}>
       <UsernameModal />
       <Routes>
         <Route path="/"         element={<CanvasScreen />} />
