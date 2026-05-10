@@ -8,6 +8,10 @@ import { createClient } from '@supabase/supabase-js';
 import type { Database } from '../lib/supabase';
 import './AdminScreen.css';
 
+console.log('[admin] module loading — VITE_SUPABASE_URL set:', !!import.meta.env.VITE_SUPABASE_URL,
+  '| VITE_ADMIN_SERVICE_KEY set:', !!import.meta.env.VITE_ADMIN_SERVICE_KEY,
+  '| VITE_ADMIN_PASSWORD set:', !!import.meta.env.VITE_ADMIN_PASSWORD);
+
 if (!import.meta.env.VITE_ADMIN_SERVICE_KEY) {
   console.error('[admin] VITE_ADMIN_SERVICE_KEY is not set — all admin mutations will fail with RLS errors');
 }
@@ -124,43 +128,52 @@ function CanvasesTab({ onSelect }: { onSelect: (id: string, name: string) => voi
   const load = useCallback(async () => {
     setLoading(true);
     setFetchError(null);
-    const [cvRes, drRes, usRes] = await Promise.all([
-      admin.from('canvases').select('id, name, slug, is_active, created_at').order('created_at'),
-      admin.from('drawings').select('canvas_id').eq('is_deleted', false),
-      admin.from('users').select('canvas_id').not('canvas_id', 'is', null),
-    ]);
+    console.log('[admin] CanvasesTab load() called');
+    try {
+      const [cvRes, drRes, usRes] = await Promise.all([
+        admin.from('canvases').select('id, name, slug, is_active, created_at').order('created_at'),
+        admin.from('drawings').select('canvas_id').eq('is_deleted', false),
+        admin.from('users').select('canvas_id').not('canvas_id', 'is', null),
+      ]);
 
-    console.log('[admin] canvases fetch', { data: cvRes.data, error: cvRes.error });
-    if (drRes.error) console.error('[admin] drawings count fetch failed', drRes.error);
-    if (usRes.error) console.error('[admin] users count fetch failed', usRes.error);
+      console.log('[admin] canvases fetch', { data: cvRes.data, error: cvRes.error });
+      if (drRes.error) console.error('[admin] drawings count fetch failed', drRes.error);
+      if (usRes.error) console.error('[admin] users count fetch failed', usRes.error);
 
-    if (cvRes.error) {
-      setFetchError(`Failed to load canvases: ${cvRes.error.message} (code: ${cvRes.error.code})`);
+      if (cvRes.error) {
+        setFetchError(`Failed to load canvases: ${cvRes.error.message} (code: ${cvRes.error.code})`);
+        return;
+      }
+
+      const dCounts: Record<string, number> = {};
+      for (const d of drRes.data ?? []) {
+        dCounts[d.canvas_id] = (dCounts[d.canvas_id] ?? 0) + 1;
+      }
+
+      const uCounts: Record<string, number> = {};
+      for (const u of usRes.data ?? []) {
+        if (u.canvas_id) uCounts[u.canvas_id] = (uCounts[u.canvas_id] ?? 0) + 1;
+      }
+
+      setRows(
+        (cvRes.data ?? []).map((c) => ({
+          ...c,
+          drawingCount: dCounts[c.id] ?? 0,
+          userCount:    uCounts[c.id] ?? 0,
+        })),
+      );
+    } catch (err) {
+      console.error('[admin] canvases load threw unexpectedly:', err);
+      setFetchError(`Unexpected error: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const dCounts: Record<string, number> = {};
-    for (const d of drRes.data ?? []) {
-      dCounts[d.canvas_id] = (dCounts[d.canvas_id] ?? 0) + 1;
-    }
-
-    const uCounts: Record<string, number> = {};
-    for (const u of usRes.data ?? []) {
-      if (u.canvas_id) uCounts[u.canvas_id] = (uCounts[u.canvas_id] ?? 0) + 1;
-    }
-
-    setRows(
-      (cvRes.data ?? []).map((c) => ({
-        ...c,
-        drawingCount: dCounts[c.id] ?? 0,
-        userCount:    uCounts[c.id] ?? 0,
-      })),
-    );
-    setLoading(false);
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    console.log('[admin] CanvasesTab mounted');
+    load();
+  }, [load]);
 
   async function toggleActive(c: CanvasRow) {
     await admin.from('canvases').update({ is_active: !c.is_active }).eq('id', c.id);
