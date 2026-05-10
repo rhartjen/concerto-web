@@ -320,7 +320,12 @@ async function startSync(canvasId: string): Promise<void> {
         .in('id', userIds);
       for (const u of usersData ?? []) knownUsernames.set(u.id, u.username);
     }
-    const dbDrawings = rows.map((r) => rowToDrawing(r, knownUsernames.get(r.user_id) ?? null));
+    // Force isMuted: true on every loaded drawing — mute state never persists
+    // across sessions. The user's own new drawings start unmuted (Canvas.tsx).
+    const dbDrawings = rows.map((r) => ({
+      ...rowToDrawing(r, knownUsernames.get(r.user_id) ?? null),
+      isMuted: true,
+    }));
     useDrawingsStore.setState((state) => {
       // Merge: keep optimistic drawings already in store (own strokes drawn during
       // the async fetch), and append only DB rows not yet present locally.

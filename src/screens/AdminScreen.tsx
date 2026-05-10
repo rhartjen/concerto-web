@@ -8,10 +8,25 @@ import { createClient } from '@supabase/supabase-js';
 import type { Database } from '../lib/supabase';
 import './AdminScreen.css';
 
+if (!import.meta.env.VITE_ADMIN_SERVICE_KEY) {
+  console.error('[admin] VITE_ADMIN_SERVICE_KEY is not set — all admin mutations will fail with RLS errors');
+}
+
 // Service-role client — bypasses all RLS. Only used in this file.
+// persistSession/autoRefreshToken disabled so this client never reads the
+// anon session from localStorage; without this the Authorization header would
+// carry the anonymous user JWT instead of the service role key, and RLS would
+// block everything despite the correct apikey being set.
 const admin = createClient<Database>(
-  import.meta.env.VITE_SUPABASE_URL        ?? '',
-  import.meta.env.VITE_ADMIN_SERVICE_KEY   ?? '',
+  import.meta.env.VITE_SUPABASE_URL      ?? '',
+  import.meta.env.VITE_ADMIN_SERVICE_KEY ?? '',
+  {
+    auth: {
+      persistSession:     false,
+      autoRefreshToken:   false,
+      detectSessionInUrl: false,
+    },
+  },
 );
 
 const ADMIN_PW    = import.meta.env.VITE_ADMIN_PASSWORD ?? '';
