@@ -50,6 +50,7 @@ export default function UsernameModal() {
     try {
       await setUsername(trimmed);
     } catch (err: unknown) {
+      console.error('[modal] setUsername failed — full error:', err);
       const pg = err as { code?: string; message?: string };
       if (pg?.code === '23505') {
         setError('Username taken');

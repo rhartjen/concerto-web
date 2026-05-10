@@ -47,7 +47,10 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       canvas_id: canvasId,
     });
 
-    if (error) throw error; // Surface to the modal (e.g. unique constraint → name taken)
+    if (error) {
+      console.error('[session] users insert failed — code:', error.code, '| message:', error.message, '| details:', error.details, '| hint:', error.hint);
+      throw error;
+    }
 
     localStorage.setItem(USER_ID_KEY, userId);
     set({ username, needsUsername: false });
