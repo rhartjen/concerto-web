@@ -6,6 +6,7 @@ import type { InstrumentName } from '../constants/instrumentMap';
 import { supabase, type Tables, type Json } from '../lib/supabase';
 import { useSessionStore } from './sessionStore';
 import { useToastStore } from './toastStore';
+import { ensureValidSession } from '../utils/sessionGuard';
 
 const STROKE_WIDTH = 4;
 
@@ -97,7 +98,7 @@ function rowToDrawing(row: Tables<'drawings'>, username: string | null = null): 
     boundingBox,
     position:    row.canvas_position as unknown as { x: number; y: number },
     strokeColor: row.color,
-    strokeWidth: STROKE_WIDTH,
+    strokeWidth: row.stroke_width ?? STROKE_WIDTH,
     instrument,
     isActive:    true,
     isLocked:    false,
@@ -136,6 +137,7 @@ export const useDrawingsStore = create<DrawingsState>((set, get) => ({
       frequencies:     drawing.soundMapping.frequency as unknown as Json,
       beat_position:   drawing.beatPosition,
       volume:          drawing.volume,
+      stroke_width:    drawing.strokeWidth,
     };
 
     void (async () => {
@@ -229,27 +231,50 @@ export const useDrawingsStore = create<DrawingsState>((set, get) => ({
     }));
 
     void (async () => {
-      // Diagnostic: confirm auth session matches ownership before the call.
-      const { data: { user } } = await supabase.auth.getUser();
+      // Refresh session before writing — catches expired anonymous tokens before
+      // they produce opaque RLS errors.
+      const session = await ensureValidSession();
+      if (!session) {
+        useDrawingsStore.setState((s) => ({ drawings: [...s.drawings, drawing] }));
+        useToastStore.getState().showToast('Delete failed: session expired — reload and try again');
+        return;
+      }
+
+      // Confirm auth.uid() still matches drawing.userId. A mismatch means the
+      // anonymous session rotated and the new token owns a different user row.
+      const authUid = session.userId;
       console.log('[drawings] soft-delete auth check', {
-        authUid:       user?.id,
+        authUid,
         drawingUserId: drawing.userId,
         storeUserId:   userId,
-        match:         user?.id === drawing.userId,
+        match:         authUid === drawing.userId,
       });
+
+      if (authUid !== drawing.userId) {
+        console.error('[drawings] soft-delete blocked — auth.uid() does not match drawing.userId (session rotated?)');
+        useDrawingsStore.setState((s) => ({ drawings: [...s.drawings, drawing] }));
+        useToastStore.getState().showToast('Delete failed: user_id mismatch — session may have rotated');
+        return;
+      }
 
       const { error } = await supabase
         .from('drawings')
         .update({ is_deleted: true })
         .eq('id', id)
-        .eq('user_id', userId);
+        .eq('user_id', authUid);
 
       if (!error) return;
 
-      // Rollback: restore the drawing so it doesn't silently reappear on reload.
-      console.error('[drawings] soft-delete failed', error);
+      // Rollback and surface the exact Supabase error so the root cause is visible.
+      console.error('[drawings] soft-delete failed', {
+        code:    error.code,
+        message: error.message,
+        details: error.details,
+        hint:    error.hint,
+      });
       useDrawingsStore.setState((s) => ({ drawings: [...s.drawings, drawing] }));
-      useToastStore.getState().showToast('Failed to delete drawing');
+      const detail = [error.code, error.message].filter(Boolean).join(' — ');
+      useToastStore.getState().showToast(`Delete failed: ${detail}`);
     })();
   },
 

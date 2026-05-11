@@ -56,14 +56,23 @@ interface UserRow {
   drawingCount:   number;
 }
 
+interface BoundingBox {
+  x:      number;
+  y:      number;
+  width:  number;
+  height: number;
+}
+
 interface DrawingRow {
-  id:         string;
-  user_id:    string;
-  username:   string;
-  instrument: string;
-  note:       string;
-  color:      string;
-  created_at: string;
+  id:           string;
+  user_id:      string;
+  username:     string;
+  instrument:   string;
+  note:         string;
+  color:        string;
+  created_at:   string;
+  bounding_box: BoundingBox | null;
+  path_data:    string;
 }
 
 type Tab = 'canvases' | 'users' | 'drawings';
@@ -398,19 +407,94 @@ function UsersTab({ canvasId }: { canvasId: string | null }) {
 
 // ── Drawings tab ──────────────────────────────────────────────────────────────
 
+const LARGE_THRESHOLD = 4000;
+
+function isLarge(d: DrawingRow): boolean {
+  if (!d.bounding_box) return false;
+  return d.bounding_box.width > LARGE_THRESHOLD || d.bounding_box.height > LARGE_THRESHOLD;
+}
+
+function getArea(d: DrawingRow): number {
+  if (!d.bounding_box) return 0;
+  return d.bounding_box.width * d.bounding_box.height;
+}
+
+function sizeLabel(d: DrawingRow): string {
+  if (!d.bounding_box) return '—';
+  return `${Math.round(d.bounding_box.width)} × ${Math.round(d.bounding_box.height)}`;
+}
+
+function PathThumb({ drawing }: { drawing: DrawingRow }) {
+  const bb = drawing.bounding_box;
+  if (!bb || !drawing.path_data) {
+    return <div className="a-thumb a-thumb--empty" />;
+  }
+  const pad = Math.max(Math.max(bb.width, bb.height) * 0.06, 16);
+  const vx  = bb.x - pad;
+  const vy  = bb.y - pad;
+  const vw  = Math.max(bb.width  + pad * 2, 32);
+  const vh  = Math.max(bb.height + pad * 2, 32);
+  // Keep displayed stroke at ~3px regardless of viewBox scale.
+  const strokeWidth = Math.max(vw, vh) / 20;
+  return (
+    <svg
+      className="a-thumb"
+      width={60}
+      height={60}
+      viewBox={`${vx} ${vy} ${vw} ${vh}`}
+    >
+      <path
+        d={drawing.path_data}
+        fill="none"
+        stroke={drawing.color}
+        strokeWidth={strokeWidth}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+type SortKey = 'created_at' | 'size';
+
+function SortTh({ label, col, current, dir, onSort }: {
+  label:   string;
+  col:     SortKey;
+  current: SortKey;
+  dir:     'asc' | 'desc';
+  onSort:  (k: SortKey) => void;
+}) {
+  const active = col === current;
+  return (
+    <th
+      className={`a-th-sort${active ? ' a-th-sort--active' : ''}`}
+      onClick={() => onSort(col)}
+    >
+      {label}
+      <span className="a-sort-arrow">{active ? (dir === 'asc' ? ' ↑' : ' ↓') : ' ↕'}</span>
+    </th>
+  );
+}
+
 function DrawingsTab({ canvasId }: { canvasId: string | null }) {
   const [drawings, setDrawings] = useState<DrawingRow[]>([]);
   const [loading,  setLoading]  = useState(false);
   const [opError,  setOpError]  = useState<string | null>(null);
-  // nukeStep: 0 = idle, 1 = awaiting confirm, 2 = in-progress
-  const [nukeStep, setNukeStep] = useState<0 | 1 | 2>(0);
+
+  const [sortKey,  setSortKey]  = useState<SortKey>('created_at');
+  const [sortDir,  setSortDir]  = useState<'asc' | 'desc'>('desc');
+  const [flagMode, setFlagMode] = useState(false);
+
+  // 0 = idle | 1 = confirm | 2 = in-progress
+  const [nukeStep,      setNukeStep]      = useState<0 | 1 | 2>(0);
+  const [oversizedStep, setOversizedStep] = useState<0 | 1 | 2>(0);
 
   const load = useCallback(async () => {
     if (!canvasId) return;
     setLoading(true);
 
     const drRes = await admin.from('drawings')
-      .select('id, user_id, instrument, note, color, created_at')
+      .select('id, user_id, instrument, note, color, created_at, bounding_box, path_data')
       .eq('canvas_id', canvasId)
       .eq('is_deleted', false)
       .order('created_at', { ascending: false });
@@ -426,13 +510,38 @@ function DrawingsTab({ canvasId }: { canvasId: string | null }) {
     setDrawings(
       (drRes.data ?? []).map((d) => ({
         ...d,
-        username: nameMap[d.user_id] ?? '(unknown)',
+        bounding_box: d.bounding_box as BoundingBox | null,
+        path_data:    d.path_data ?? '',
+        username:     nameMap[d.user_id] ?? '(unknown)',
       })),
     );
     setLoading(false);
   }, [canvasId]);
 
   useEffect(() => { load(); }, [load]);
+
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDir('desc');
+    }
+  }
+
+  const oversized = drawings.filter(isLarge);
+
+  const sorted = [...drawings].sort((a, b) => {
+    const cmp = sortKey === 'size'
+      ? getArea(a) - getArea(b)
+      : new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    return sortDir === 'asc' ? cmp : -cmp;
+  });
+
+  // In flag mode, push oversized rows to the top, preserving sort within each group.
+  const displayed = flagMode
+    ? [...sorted.filter(isLarge), ...sorted.filter((d) => !isLarge(d))]
+    : sorted;
 
   async function softDelete(id: string) {
     setOpError(null);
@@ -443,6 +552,24 @@ function DrawingsTab({ canvasId }: { canvasId: string | null }) {
       return;
     }
     setDrawings((prev) => prev.filter((d) => d.id !== id));
+  }
+
+  async function deleteOversized() {
+    if (oversizedStep === 0) { setOversizedStep(1); return; }
+    setOversizedStep(2);
+    setOpError(null);
+    const ids = drawings.filter(isLarge).map((d) => d.id);
+    if (ids.length === 0) { setOversizedStep(0); return; }
+    const { error } = await admin.from('drawings').update({ is_deleted: true }).in('id', ids);
+    if (error) {
+      console.error('[admin] deleteOversized failed:', error);
+      setOversizedStep(0);
+      setOpError(`Delete failed: ${error.message}`);
+      return;
+    }
+    setDrawings((prev) => prev.filter((d) => !isLarge(d)));
+    setOversizedStep(0);
+    setFlagMode(false);
   }
 
   async function nuke() {
@@ -467,17 +594,51 @@ function DrawingsTab({ canvasId }: { canvasId: string | null }) {
   return (
     <div className="a-content">
       {opError && <p className="a-hint a-hint--error">{opError}</p>}
+
       <div className="a-toolbar">
         <span className="a-count">
           {drawings.length} drawing{drawings.length !== 1 ? 's' : ''}
+          {oversized.length > 0 && (
+            <span className="a-count-flag"> · {oversized.length} oversized</span>
+          )}
         </span>
+
         <div className="a-toolbar-right">
-          {nukeStep === 0 && (
-            <button className="a-btn a-btn--danger" onClick={nuke}>
-              nuke canvas
+          {/* Flag large drawings toggle */}
+          <button
+            className={`a-btn${flagMode ? ' a-btn--amber-active' : ' a-btn--amber'}`}
+            onClick={() => setFlagMode((v) => !v)}
+            disabled={oversized.length === 0}
+          >
+            flag large drawings
+          </button>
+
+          {/* Flag & delete all oversized */}
+          {oversizedStep === 0 && (
+            <button
+              className="a-btn a-btn--danger"
+              onClick={deleteOversized}
+              disabled={oversized.length === 0}
+            >
+              flag &amp; delete oversized ({oversized.length})
             </button>
           )}
-          {nukeStep === 1 && (
+          {oversizedStep === 1 && (
+            <>
+              <span className="a-hint a-hint--error">
+                delete {oversized.length} oversized drawing{oversized.length !== 1 ? 's' : ''}?
+              </span>
+              <button className="a-btn a-btn--danger" onClick={deleteOversized}>confirm</button>
+              <button className="a-btn" onClick={() => setOversizedStep(0)}>cancel</button>
+            </>
+          )}
+          {oversizedStep === 2 && <span className="a-loading">deleting…</span>}
+
+          {/* Nuke canvas — hidden while oversized confirm is open */}
+          {oversizedStep === 0 && nukeStep === 0 && (
+            <button className="a-btn a-btn--danger" onClick={nuke}>nuke canvas</button>
+          )}
+          {oversizedStep === 0 && nukeStep === 1 && (
             <>
               <span className="a-hint a-hint--error">
                 delete all {drawings.length} drawings?
@@ -486,7 +647,7 @@ function DrawingsTab({ canvasId }: { canvasId: string | null }) {
               <button className="a-btn" onClick={() => setNukeStep(0)}>cancel</button>
             </>
           )}
-          {nukeStep === 2 && <span className="a-loading">nuking…</span>}
+          {oversizedStep === 0 && nukeStep === 2 && <span className="a-loading">nuking…</span>}
         </div>
       </div>
 
@@ -496,34 +657,44 @@ function DrawingsTab({ canvasId }: { canvasId: string | null }) {
         <table className="a-table">
           <thead>
             <tr>
-              <th></th>
+              <th className="a-col-thumb"></th>
               <th>User</th>
               <th>Instrument</th>
               <th>Note</th>
-              <th>Created</th>
+              <SortTh label="Size"    col="size"       current={sortKey} dir={sortDir} onSort={toggleSort} />
+              <SortTh label="Created" col="created_at" current={sortKey} dir={sortDir} onSort={toggleSort} />
               <th></th>
             </tr>
           </thead>
           <tbody>
-            {drawings.map((d) => (
-              <tr key={d.id}>
-                <td>
-                  <span className="a-swatch" style={{ background: d.color }} />
-                </td>
-                <td>{d.username}</td>
-                <td>{d.instrument}</td>
-                <td>{d.note}</td>
-                <td className="a-ts">{new Date(d.created_at).toLocaleString()}</td>
-                <td className="a-cell-actions">
-                  <button
-                    className="a-btn a-btn--danger"
-                    onClick={() => softDelete(d.id)}
-                  >
-                    delete
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {displayed.map((d) => {
+              const large = isLarge(d);
+              return (
+                <tr key={d.id} className={large && flagMode ? 'a-row--flagged' : undefined}>
+                  <td className="a-col-thumb">
+                    <PathThumb drawing={d} />
+                  </td>
+                  <td>{d.username}</td>
+                  <td>{d.instrument}</td>
+                  <td>{d.note}</td>
+                  <td>
+                    {large && flagMode && (
+                      <div><span className="a-warning-badge">⚠️ Large drawing</span></div>
+                    )}
+                    <span className="a-ts">{sizeLabel(d)}</span>
+                  </td>
+                  <td className="a-ts">{new Date(d.created_at).toLocaleString()}</td>
+                  <td className="a-cell-actions">
+                    <button
+                      className="a-btn a-btn--danger"
+                      onClick={() => softDelete(d.id)}
+                    >
+                      delete
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}

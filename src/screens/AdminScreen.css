@@ -334,3 +334,92 @@
 .a-hint--error {
   color: #ff4d5e;
 }
+
+/* ── Drawings tab extras ─────────────────────────────────────────────────── */
+
+/* Oversized count indicator in toolbar */
+.a-count-flag {
+  color: #f59e0b;
+}
+
+/* Amber buttons for flag-large toggle */
+.a-btn--amber {
+  background: rgba(245, 158, 11, 0.06);
+  border-color: rgba(245, 158, 11, 0.25);
+  color: #f59e0b;
+}
+
+.a-btn--amber-active {
+  background: rgba(245, 158, 11, 0.16);
+  border-color: rgba(245, 158, 11, 0.45);
+  color: #f59e0b;
+}
+
+/* Flagged row highlight */
+.a-row--flagged td {
+  background: rgba(245, 158, 11, 0.04);
+}
+
+/* Warning badge inside flagged rows */
+.a-warning-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  border-radius: 4px;
+  padding: 2px 6px;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+  margin-bottom: 3px;
+}
+
+/* Path thumbnail column */
+.a-col-thumb {
+  width: 68px;
+  padding-right: 6px !important;
+}
+
+.a-thumb {
+  display: block;
+  width: 60px;
+  height: 60px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  flex-shrink: 0;
+}
+
+.a-thumb--empty {
+  display: block;
+  width: 60px;
+  height: 60px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+/* Sortable column headers */
+.a-th-sort {
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  white-space: nowrap;
+  transition: color 0.12s;
+}
+
+.a-th-sort:hover {
+  color: #8892b0 !important;
+}
+
+.a-th-sort--active {
+  color: #3ED4C4 !important;
+}
+
+.a-sort-arrow {
+  color: #2e3560;
+  font-size: 9px;
+}
+
+.a-th-sort--active .a-sort-arrow {
+  color: #3ED4C4;
+}

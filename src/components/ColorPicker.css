@@ -54,6 +54,78 @@
   color: #d8dcf0;
 }
 
+/* ── Brush size controls ─────────────────────────────────────────────────── */
+
+.brush-divider {
+  width: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  align-self: stretch;
+  margin: 2px 4px;
+  flex-shrink: 0;
+}
+
+.brush-size-control {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  justify-content: center;
+}
+
+.brush-size-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 72px;
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(
+    to right,
+    #3ED4C4 0%,
+    #3ED4C4 calc((var(--brush-pct, 15%) )),
+    #1e2448 calc((var(--brush-pct, 15%) )),
+    #1e2448 100%
+  );
+  outline: none;
+  cursor: pointer;
+}
+
+.brush-size-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #3ED4C4;
+  cursor: pointer;
+  box-shadow: 0 0 4px rgba(62, 212, 196, 0.5);
+}
+
+.brush-size-slider::-moz-range-thumb {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: none;
+  background: #3ED4C4;
+  cursor: pointer;
+  box-shadow: 0 0 4px rgba(62, 212, 196, 0.5);
+}
+
+/* Fixed-size container keeps the pill height constant regardless of dot size */
+.brush-preview-dot-wrap {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.brush-preview-dot {
+  border-radius: 50%;
+  transition: width 0.1s ease, height 0.1s ease, background 0.15s ease;
+  flex-shrink: 0;
+}
+
 /* Desktop: center within the canvas area (excluding the 280px sidebar) */
 @media (min-width: 768px) {
   .color-picker {

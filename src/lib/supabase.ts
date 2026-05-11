@@ -83,6 +83,7 @@ export interface Database {
           frequencies:     Json;
           beat_position:   number;
           volume:          number;
+          stroke_width:    number | null; // null for rows saved before this column was added
           is_deleted:      boolean;
           created_at:      string;
         };
@@ -100,6 +101,7 @@ export interface Database {
           frequencies:     Json;
           beat_position:   number;
           volume?:         number;
+          stroke_width?:   number | null;
           is_deleted?:     boolean;
           created_at?:     string;
         };
@@ -114,6 +116,7 @@ export interface Database {
           frequencies?:     Json;
           beat_position?:   number;
           volume?:          number;
+          stroke_width?:    number | null;
           is_deleted?:      boolean;
         };
         Relationships: [];

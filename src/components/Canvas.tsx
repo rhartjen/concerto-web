@@ -12,6 +12,7 @@ import { useAmbientLoop } from '../hooks/useAmbientLoop';
 import { useViewportAudio } from '../hooks/useViewportAudio';
 import { unlockAudio } from '../utils/audioEngine';
 import { useViewportStore } from '../store/useViewportStore';
+import { useBrushStore } from '../store/useBrushStore';
 import { updateViewportTransform } from '../utils/viewportState';
 import { registerPanHandler } from '../utils/canvasNavigation';
 import { INSTRUMENT_MAP, getInstrumentForColor } from '../constants/instrumentMap';
@@ -24,7 +25,6 @@ import './Canvas.css';
 const MIN_SCALE        = 0.25;
 const MAX_SCALE        = 4;
 const GRID_SIZE        = 40;
-const STROKE_WIDTH     = 4;
 const MIN_DIST_SQ      = 4;    // skip micro-movements to avoid path bloat
 const CYCLE_MS         = 2500; // visual pulse period for AnimatedStroke only
 const MINIMAP_SIZE     = 150;
@@ -352,6 +352,12 @@ export default function Canvas({ children }: CanvasProps) {
   const [selectedColor, setSelectedColor]   = useState(INSTRUMENT_MAP[0].hex);
   const selectedColorRef                    = useRef(INSTRUMENT_MAP[0].hex);
 
+  // brushSize is read from the store for live preview (reactive) and via a ref
+  // inside pointer-event callbacks (avoids stale closure over the subscription).
+  const brushSize    = useBrushStore((s) => s.brushSize);
+  const brushSizeRef = useRef(brushSize);
+  useEffect(() => { brushSizeRef.current = brushSize; }, [brushSize]);
+
   function handleColorChange(hex: string) {
     setSelectedColor(hex);
     selectedColorRef.current = hex;
@@ -562,7 +568,7 @@ export default function Canvas({ children }: CanvasProps) {
         boundingBox: bbox,
         position:    { x: bbox.x, y: bbox.y },
         strokeColor,
-        strokeWidth: STROKE_WIDTH,
+        strokeWidth: brushSizeRef.current,
         instrument,
         isActive:    true,
         isLocked:    false,
@@ -969,7 +975,7 @@ export default function Canvas({ children }: CanvasProps) {
               d={currentPath}
               fill="none"
               stroke={selectedColor}
-              strokeWidth={STROKE_WIDTH}
+              strokeWidth={brushSize}
               strokeLinecap="round"
               strokeLinejoin="round"
             />

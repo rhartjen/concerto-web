@@ -66,6 +66,9 @@ function diatonicTriad(rootMidi: number): number[] {
  * All melodic instruments produce exactly in-scale notes with no frequency
  * jitter. Chord tones are built by walking GLOBAL_SCALE (1-3-5), so every
  * triad is diatonic and clash-free.
+ *
+ * brushSize (stroke width) is intentionally excluded — it is a visual-only
+ * property and has no influence on note, chord, or frequency derivation.
  */
 export function mapDrawingToSound(
   drawing:  { boundingBox: BoundingBox; id?: string },

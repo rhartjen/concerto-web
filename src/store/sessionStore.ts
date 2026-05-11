@@ -152,3 +152,13 @@ async function initSession(): Promise<void> {
 }
 
 initSession();
+
+// Refresh the anonymous session whenever the tab regains focus so that
+// long-idle sessions don't produce silent RLS failures on the next write.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    supabase.auth.refreshSession().then(({ error }) => {
+      if (error) console.warn('[session] focus refresh failed:', error.message);
+    });
+  }
+});
