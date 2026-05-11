@@ -173,6 +173,29 @@
   opacity: 0.45;
 }
 
+/* ── Navigation area (swatch + label → click to pan canvas) ─────────────── */
+
+.card-nav-area {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 3px 4px;
+  margin: -3px -4px;
+  transition: background 0.12s;
+}
+
+.card-nav-area:hover {
+  background: rgba(62, 212, 196, 0.06);
+}
+
+.card-nav-area:hover .card-note-name {
+  color: #3ed4c4;
+}
+
 /* ── Color swatch ────────────────────────────────────────────────────────── */
 
 .card-swatch {

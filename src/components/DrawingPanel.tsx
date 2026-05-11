@@ -4,6 +4,7 @@ import { useDrawingsStore, type DrawingObject } from '../store/drawingsStore';
 import { useSessionStore } from '../store/sessionStore';
 import { useViewportStore } from '../store/useViewportStore';
 import { setDrawingVolume, removeDrawingGain } from '../utils/audioEngine';
+import { panToDrawing } from '../utils/canvasNavigation';
 import './DrawingPanel.css';
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
@@ -98,7 +99,7 @@ function AnimatedCardInfo({ drawing }: { drawing: DrawingObject }) {
 // ─── OwnCard ─────────────────────────────────────────────────────────────────
 // Card for drawings created by the current user.
 
-function OwnCard({ drawing }: { drawing: DrawingObject }) {
+function OwnCard({ drawing, onNavigate }: { drawing: DrawingObject; onNavigate: () => void }) {
   const update    = useDrawingsStore((s) => s.updateDrawing);
   const remove    = useDrawingsStore((s) => s.removeDrawing);
   const setVolume = useDrawingsStore((s) => s.setVolume);
@@ -108,12 +109,13 @@ function OwnCard({ drawing }: { drawing: DrawingObject }) {
   return (
     <div className="drawing-card">
       <div className="card-main-row">
-        <span
-          className="card-swatch"
-          style={{ background: drawing.strokeColor }}
-        />
-
-        <AnimatedCardInfo drawing={drawing} />
+        <div className="card-nav-area" onClick={onNavigate}>
+          <span
+            className="card-swatch"
+            style={{ background: drawing.strokeColor }}
+          />
+          <AnimatedCardInfo drawing={drawing} />
+        </div>
 
         <button
           className="card-icon-btn"
@@ -161,7 +163,7 @@ function OwnCard({ drawing }: { drawing: DrawingObject }) {
 // ─── CanvasCard ───────────────────────────────────────────────────────────────
 // Card for drawings created by other users.
 
-function CanvasCard({ drawing }: { drawing: DrawingObject }) {
+function CanvasCard({ drawing, onNavigate }: { drawing: DrawingObject; onNavigate: () => void }) {
   const update       = useDrawingsStore((s) => s.updateDrawing);
   const toggleHidden = useDrawingsStore((s) => s.toggleHidden);
   const setVolume    = useDrawingsStore((s) => s.setVolume);
@@ -173,12 +175,13 @@ function CanvasCard({ drawing }: { drawing: DrawingObject }) {
   return (
     <div className={`drawing-card${hidden ? ' drawing-card--hidden' : ''}`}>
       <div className="card-main-row">
-        <span
-          className="card-swatch"
-          style={{ background: drawing.strokeColor }}
-        />
-
-        <AnimatedCardInfo drawing={drawing} />
+        <div className="card-nav-area" onClick={onNavigate}>
+          <span
+            className="card-swatch"
+            style={{ background: drawing.strokeColor }}
+          />
+          <AnimatedCardInfo drawing={drawing} />
+        </div>
 
         <button
           className="card-icon-btn"
@@ -276,6 +279,12 @@ export default function DrawingPanel() {
       }).length
     : 0;
 
+  function handleNavigate(drawing: DrawingObject) {
+    panToDrawing(drawing);
+    // On mobile the panel slides up as a drawer — auto-close it so the canvas is visible.
+    if (window.innerWidth < 768) setOpen(false);
+  }
+
   return (
     <div className={`drawing-panel${open ? ' drawing-panel--open' : ''}`}>
 
@@ -325,14 +334,14 @@ export default function DrawingPanel() {
         {ownDrawings.length === 0 ? (
           <p className="panel-empty-text">draw something to get started</p>
         ) : (
-          ownDrawings.map((d) => <OwnCard key={d.id} drawing={d} />)
+          ownDrawings.map((d) => <OwnCard key={d.id} drawing={d} onNavigate={() => handleNavigate(d)} />)
         )}
 
         {/* Canvas — other users */}
         {othersDrawings.length > 0 && (
           <>
             <SectionHeader label="Canvas" count={othersDrawings.length} />
-            {othersDrawings.map((d) => <CanvasCard key={d.id} drawing={d} />)}
+            {othersDrawings.map((d) => <CanvasCard key={d.id} drawing={d} onNavigate={() => handleNavigate(d)} />)}
           </>
         )}
 

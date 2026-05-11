@@ -13,6 +13,7 @@ import { useViewportAudio } from '../hooks/useViewportAudio';
 import { unlockAudio } from '../utils/audioEngine';
 import { useViewportStore } from '../store/useViewportStore';
 import { updateViewportTransform } from '../utils/viewportState';
+import { registerPanHandler } from '../utils/canvasNavigation';
 import { INSTRUMENT_MAP, getInstrumentForColor } from '../constants/instrumentMap';
 import { CANVAS_WIDTH, CANVAS_HEIGHT } from '../constants/limits';
 import ColorPicker from './ColorPicker';
@@ -148,6 +149,33 @@ const MergeRing = React.memo(function MergeRing({
       stroke={color}
       strokeWidth={3}
     />
+  );
+});
+
+// ─── NavRing ──────────────────────────────────────────────────────────────────
+// Larger, softer ring pulse shown after sidebar-card navigation lands.
+const NavRing = React.memo(function NavRing({
+  cx, cy, color, onDone,
+}: {
+  cx: number; cy: number; color: string; onDone: () => void;
+}) {
+  const ref = useRef<SVGCircleElement>(null);
+
+  useEffect(() => {
+    if (!ref.current) return;
+    const anim = ref.current.animate(
+      [
+        { r: '0',   opacity: 0.75, strokeWidth: '2.5' },
+        { r: '100', opacity: 0,    strokeWidth: '1'   },
+      ],
+      { duration: 600, easing: 'ease-out', fill: 'forwards' },
+    );
+    const t = setTimeout(onDone, 660);
+    return () => { anim.cancel(); clearTimeout(t); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <circle ref={ref} cx={cx} cy={cy} r={0} fill="none" stroke={color} strokeWidth={2.5} />
   );
 });
 
@@ -342,6 +370,23 @@ export default function Canvas({ children }: CanvasProps) {
     key: number; cx: number; cy: number; color: string;
   } | null>(null);
 
+  // ── Navigation ring pulse (triggered by sidebar card click) ───────────────
+  const [navPulse, setNavPulse] = useState<{
+    key: number; cx: number; cy: number; color: string;
+  } | null>(null);
+  const panRafRef = useRef<number | null>(null);
+
+  // ── Pinch / zoom refs ─────────────────────────────────────────────────────
+  // Snapshot of transform state captured when a pinch gesture begins.
+  const pinchMemo = useRef<{
+    tx: number; ty: number; scale: number; ox: number; oy: number;
+  } | null>(null);
+  // Last cumulative scale factor received from @use-gesture/react (resets to 1
+  // on each new gesture). Used to detect spurious velocity spikes.
+  const prevPinchS   = useRef(1);
+  // True while a pinch is in progress; blocks competing single-finger events.
+  const isZoomingRef = useRef(false);
+
   // ── Push transform directly to DOM (no React re-render) ──────────────────
   const applyTransform = useCallback(() => {
     const el = containerRef.current;
@@ -397,6 +442,53 @@ export default function Canvas({ children }: CanvasProps) {
       labelEl.style.transform = `translate(calc(${sx}px - 50%), calc(${sy}px - 100% - 8px))`;
     }
   }, []);
+
+  // ── Sidebar pan-to-drawing ────────────────────────────────────────────────
+  useEffect(() => {
+    registerPanHandler((canvasX, canvasY, color) => {
+      const el = containerRef.current;
+      if (!el) return;
+
+      if (panRafRef.current !== null) cancelAnimationFrame(panRafRef.current);
+
+      const vw = el.clientWidth;
+      const vh = el.clientHeight;
+      const targetTx = vw / 2 - canvasX * scaleRef.current;
+      const targetTy = vh / 2 - canvasY * scaleRef.current;
+
+      const startTx   = txRef.current;
+      const startTy   = tyRef.current;
+      const startTime = performance.now();
+      const duration  = 300;
+
+      function ease(t: number): number {
+        return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+      }
+
+      function frame(now: number) {
+        const t = Math.min((now - startTime) / duration, 1);
+        const e = ease(t);
+        txRef.current = startTx + (targetTx - startTx) * e;
+        tyRef.current = startTy + (targetTy - startTy) * e;
+        applyTransform();
+        if (t < 1) {
+          panRafRef.current = requestAnimationFrame(frame);
+        } else {
+          panRafRef.current = null;
+          txRef.current = targetTx;
+          tyRef.current = targetTy;
+          applyTransform();
+          setNavPulse({ key: Date.now(), cx: canvasX, cy: canvasY, color });
+        }
+      }
+      panRafRef.current = requestAnimationFrame(frame);
+    });
+
+    return () => {
+      registerPanHandler(null);
+      if (panRafRef.current !== null) cancelAnimationFrame(panRafRef.current);
+    };
+  }, [applyTransform]);
 
   // ── Drawing callbacks ─────────────────────────────────────────────────────
   const startStroke = useCallback((x: number, y: number) => {
@@ -598,6 +690,9 @@ export default function Canvas({ children }: CanvasProps) {
     }
 
     function onPointerMove(e: PointerEvent) {
+      // Block all single-finger activity while a pinch is active.
+      if (isZoomingRef.current) return;
+
       // Cancel long-press if the touch moves beyond the threshold.
       if (longPressTimerRef.current && longPressOriginRef.current) {
         const dsx = e.clientX - longPressOriginRef.current.clientX;
@@ -652,6 +747,13 @@ export default function Canvas({ children }: CanvasProps) {
         currentPointsRef.current = [];
         setCurrentPath('');
       }
+
+      // A touch point was cancelled (e.g. user dropped one finger during a
+      // pinch). Reset pinch state so the gesture handler can't get stuck.
+      if (activePointers.current.size < 2) {
+        isZoomingRef.current = false;
+        pinchMemo.current    = null;
+      }
     }
 
     // Hide the hover label when the mouse exits the canvas area.
@@ -676,36 +778,53 @@ export default function Canvas({ children }: CanvasProps) {
   }, [startStroke, addPoint, finishStroke]);
 
   // ── Wheel → pan / ctrl+wheel → zoom ──────────────────────────────────────
+  // ctrl+scroll events can fire faster than one RAF frame. We coalesce them:
+  // accumulate deltaY across events in the same frame and apply once on RAF.
+  // This prevents stacking transforms when scroll fires faster than the DOM
+  // can paint.
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
+
+    let wheelRafId     = 0;
+    let accumDeltaY    = 0;
+    let lastFx         = 0;
+    let lastFy         = 0;
 
     function onWheel(e: WheelEvent) {
       e.preventDefault();
 
       if (e.ctrlKey || e.metaKey) {
-        // Zoom centred on cursor — @use-gesture/react pinch handles trackpad
-        // pinch natively; this branch catches ctrl+scroll as a fallback.
         const rect = el!.getBoundingClientRect();
-        const fx   = e.clientX - rect.left;
-        const fy   = e.clientY - rect.top;
-        const zf   = Math.exp(-e.deltaY * 0.005);
-        const ns   = clamp(scaleRef.current * zf, MIN_SCALE, MAX_SCALE);
-        const af   = ns / scaleRef.current;
-        txRef.current   += (1 - af) * (fx - txRef.current);
-        tyRef.current   += (1 - af) * (fy - tyRef.current);
-        scaleRef.current = ns;
+        accumDeltaY += e.deltaY;
+        lastFx       = e.clientX - rect.left;
+        lastFy       = e.clientY - rect.top;
+
+        if (wheelRafId) return; // RAF already queued — just accumulate
+        wheelRafId = requestAnimationFrame(() => {
+          const zf = Math.exp(-accumDeltaY * 0.005);
+          const ns = clamp(scaleRef.current * zf, MIN_SCALE, MAX_SCALE);
+          const af = ns / scaleRef.current;
+          txRef.current   += (1 - af) * (lastFx - txRef.current);
+          tyRef.current   += (1 - af) * (lastFy - tyRef.current);
+          scaleRef.current = ns;
+          accumDeltaY = 0;
+          wheelRafId  = 0;
+          applyTransform();
+        });
       } else {
         // Pan — deltaX/Y are already in CSS pixels for standard scroll.
         txRef.current -= e.deltaX;
         tyRef.current -= e.deltaY;
+        applyTransform();
       }
-
-      applyTransform();
     }
 
     el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
+    return () => {
+      el.removeEventListener('wheel', onWheel);
+      if (wheelRafId) cancelAnimationFrame(wheelRafId);
+    };
   }, [applyTransform]);
 
   // ── iOS Safari: block native pinch-to-zoom and overscroll ───────────────
@@ -734,31 +853,49 @@ export default function Canvas({ children }: CanvasProps) {
   // @use-gesture/react owns the two-touch gesture. The pointer event handler
   // above cancels any active draw as soon as a second pointer appears, so
   // there is no overlap between draw mode and pinch mode.
-  const pinchMemo = useRef<{
-    tx: number; ty: number; scale: number;
-    ox: number; oy: number;
-  } | null>(null);
+  // pinchMemo, prevPinchS and isZoomingRef are declared near the top of the
+  // component with the other gesture refs.
+
+  const MAX_PINCH_DELTA = 0.5; // ignore events where cumulative scale jumps > this
 
   useGesture(
     {
-      onPinch: ({ event, offset: [s], origin: [ox, oy], first }) => {
+      onPinch: ({ event, offset: [s], origin: [ox, oy], first, last }) => {
         event.preventDefault();
+
+        if (last) {
+          // Gesture ended or was cancelled — reset state so the next gesture
+          // starts clean and competing pointer events are unblocked.
+          pinchMemo.current    = null;
+          isZoomingRef.current = false;
+          return;
+        }
+
         if (first) {
           pinchMemo.current = {
             tx: txRef.current, ty: tyRef.current,
             scale: scaleRef.current, ox, oy,
           };
+          prevPinchS.current   = 1; // offset resets to 1 on each new gesture
+          isZoomingRef.current = true;
           return;
         }
+
         const m = pinchMemo.current;
         if (!m) return;
+
+        // Clamp velocity: discard events where the cumulative scale factor
+        // jumps by more than MAX_PINCH_DELTA in a single event (sensor jitter
+        // or OS event coalescing can produce these spurious spikes).
+        if (Math.abs(s - prevPinchS.current) > MAX_PINCH_DELTA) return;
+        prevPinchS.current = s;
 
         const newScale = clamp(m.scale * s, MIN_SCALE, MAX_SCALE);
         const af       = newScale / m.scale;
 
         // Zoom anchored at the initial pinch midpoint + pan from midpoint movement.
-        txRef.current   = m.tx + (1 - af) * (m.ox - m.tx) + (ox - m.ox);
-        tyRef.current   = m.ty + (1 - af) * (m.oy - m.ty) + (oy - m.oy);
+        txRef.current    = m.tx + (1 - af) * (m.ox - m.tx) + (ox - m.ox);
+        tyRef.current    = m.ty + (1 - af) * (m.oy - m.ty) + (oy - m.oy);
         scaleRef.current = newScale;
         applyTransform();
       },
@@ -812,6 +949,17 @@ export default function Canvas({ children }: CanvasProps) {
               cy={activePulse.cy}
               color={activePulse.color}
               onDone={() => setActivePulse(null)}
+            />
+          )}
+
+          {/* Soft highlight ring after sidebar-card navigation */}
+          {navPulse && (
+            <NavRing
+              key={navPulse.key}
+              cx={navPulse.cx}
+              cy={navPulse.cy}
+              color={navPulse.color}
+              onDone={() => setNavPulse(null)}
             />
           )}
 

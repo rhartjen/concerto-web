@@ -18,6 +18,8 @@ const AMPLITUDE      = 0.38;
 // High-pass cutoff for all melodic instruments — keeps them out of the low end
 // where kick and 808 bass live.
 const HPF_CUTOFF_HZ  = 80;
+// 808 bass is clamped to this ceiling so it always sits in the sub-bass band.
+const BASS_808_MAX_HZ = 80;
 
 // Fraction of each instrument's output routed into the reverb convolver.
 const WET: Record<InstrumentName, number> = {
@@ -215,8 +217,9 @@ function softClipCurve(amount: number): Float32Array<ArrayBuffer> {
 }
 
 // ── 808 Bass ───────────────────────────────────────────────────────────────────
-// Three sine harmonics (1×, 2×, 3×) for weight beyond a single sine.
-// All harmonics share the 300 ms pitch drop. WaveShaperNode adds grit.
+// Three sine harmonics (1×, 2×, 3×) through a steep 120 Hz low-pass, keeping
+// the sound firmly in the sub-bass band. Fixed pitch — no frequency sweep.
+// Punch envelope: 10 ms attack → 800 ms slow decay. WaveShaperNode adds grit.
 
 const HARMONICS_808 = [
   { mult: 1, gain: 1.00 },
@@ -224,32 +227,41 @@ const HARMONICS_808 = [
   { mult: 3, gain: 0.12 },
 ] as const;
 
-function synth808(ac: AudioContext, dest: AudioNode, freqs: number[], duration: number, peak: number): void {
-  const now = ac.currentTime;
-  const n   = freqs.length;
+const BASS_808_ATTACK  = 0.010; // 10 ms punch attack
+const BASS_808_DECAY   = 0.800; // 800 ms slow decay
+
+function synth808(ac: AudioContext, dest: AudioNode, freqs: number[], _duration: number, peak: number): void {
+  const now      = ac.currentTime;
+  const n        = freqs.length;
   const normGain = 1 / HARMONICS_808.reduce((s, h) => s + h.gain, 0);
+  // +15% to compensate for energy lost by removing the pitch-drop sweep.
+  const peakAdj  = peak * 1.15;
+  const envEnd   = now + BASS_808_ATTACK + BASS_808_DECAY;
 
   for (const freq of freqs) {
+    // Clamp to sub-bass range regardless of what soundMapping computed.
+    const bassFreq = Math.min(freq, BASS_808_MAX_HZ);
+
+    // Steep low-pass at 120 Hz rolls off all high-frequency content.
     const lpf = ac.createBiquadFilter();
     lpf.type = 'lowpass';
-    lpf.frequency.value = Math.max(freq * 3, 180);
-    lpf.Q.value = 2.2;
+    lpf.frequency.value = 120;
+    lpf.Q.value = 0.8;
 
     const shaper = ac.createWaveShaper();
     shaper.curve      = softClipCurve(50);
     shaper.oversample = '4x';
     lpf.connect(shaper);
 
+    // Punch envelope — fixed pitch, no frequency sweep.
     const env = ac.createGain();
     env.gain.setValueAtTime(0, now);
-    env.gain.linearRampToValueAtTime(peak / n, now + 0.008);
-    env.gain.setValueAtTime((peak * 0.75) / n, now + duration * 0.72);
-    env.gain.exponentialRampToValueAtTime(0.001, now + duration);
+    env.gain.linearRampToValueAtTime(peakAdj / n, now + BASS_808_ATTACK);
+    env.gain.exponentialRampToValueAtTime(0.001, envEnd);
     shaper.connect(env);
     env.connect(dest);
     const send = sendToReverb(env, WET['808 bass']);
 
-    // Harmonic sum — each partial drops pitch in proportion to fundamental.
     const sumGain = ac.createGain();
     sumGain.gain.value = normGain;
     sumGain.connect(lpf);
@@ -260,16 +272,15 @@ function synth808(ac: AudioContext, dest: AudioNode, freqs: number[], duration: 
 
       const osc = ac.createOscillator();
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(freq * mult, now);
-      osc.frequency.exponentialRampToValueAtTime(freq * mult * 0.80, now + 0.30);
+      osc.frequency.value = bassFreq * mult; // fixed — no pitch envelope
       osc.connect(hg);
       hg.connect(sumGain);
       osc.start(now);
-      osc.stop(now + duration + 0.1);
-      later(duration + 0.3, hg);
+      osc.stop(envEnd + 0.05);
+      later(envEnd + 0.15, hg);
     }
 
-    later(duration + 0.3, sumGain, lpf, shaper, env, send);
+    later(envEnd + 0.15, sumGain, lpf, shaper, env, send);
   }
 }
 
