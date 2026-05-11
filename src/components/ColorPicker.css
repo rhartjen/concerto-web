@@ -87,6 +87,9 @@
   );
   outline: none;
   cursor: pointer;
+  /* Allow horizontal drag to reach the browser's native range-input handler
+     even when a parent element has touch-action: none. */
+  touch-action: pan-x;
 }
 
 .brush-size-slider::-webkit-slider-thumb {

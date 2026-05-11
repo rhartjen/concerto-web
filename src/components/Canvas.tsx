@@ -327,6 +327,15 @@ export default function Canvas({ children }: CanvasProps) {
   const viewportMode    = useViewportStore((s) => s.viewportMode);
   const setViewportMode = useViewportStore((s) => s.setViewportMode);
 
+  // ── Minimap visibility — fully unmounted on mobile to avoid touch interception
+  const [showMinimap, setShowMinimap] = useState(() => window.matchMedia('(min-width: 768px)').matches);
+  useEffect(() => {
+    const mql = window.matchMedia('(min-width: 768px)');
+    const handler = (e: MediaQueryListEvent) => setShowMinimap(e.matches);
+    mql.addEventListener('change', handler);
+    return () => mql.removeEventListener('change', handler);
+  }, []);
+
   // ── Transform state (refs → zero re-render overhead per frame) ────────────
   const txRef    = useRef(0);
   const tyRef    = useRef(0);
@@ -845,6 +854,9 @@ export default function Canvas({ children }: CanvasProps) {
       if (e.touches.length > 1) e.preventDefault();
     }
     function onTouchMove(e: TouchEvent) {
+      // Let native form elements (range slider inside .color-picker) handle their
+      // own touch drag. Calling preventDefault() here would kill iOS range input.
+      if ((e.target as Element).closest?.('.color-picker')) return;
       e.preventDefault();
     }
     el.addEventListener('touchstart', onTouchStart, { passive: false });
@@ -988,13 +1000,15 @@ export default function Canvas({ children }: CanvasProps) {
       {/* Username label — shown on hover (mouse) or long-press (touch); positioned imperatively */}
       <div ref={drawingLabelRef} className="drawing-label" />
 
-      <Minimap
-        drawings={drawings}
-        hiddenIds={hiddenIds}
-        currentUserId={currentUserId}
-        viewportRectRef={viewportRectRef}
-        onMinimapClick={handleMinimapClick}
-      />
+      {showMinimap && (
+        <Minimap
+          drawings={drawings}
+          hiddenIds={hiddenIds}
+          currentUserId={currentUserId}
+          viewportRectRef={viewportRectRef}
+          onMinimapClick={handleMinimapClick}
+        />
+      )}
 
       <TempoBar />
       <ColorPicker value={selectedColor} onChange={handleColorChange} />
