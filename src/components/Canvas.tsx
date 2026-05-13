@@ -42,42 +42,6 @@ function drawingLabelText(d: DrawingObject): string {
   return `${d.soundMapping.note.replace(/\d+$/, '')} ${isMinor ? 'min' : 'maj'}`;
 }
 
-// ─── ShimmerOrb ──────────────────────────────────────────────────────────────
-// Cosmic nebula orb that breathes in opacity via the Web Animations API.
-function ShimmerOrb({
-  size, color, cx, cy, minOp, maxOp, duration,
-}: {
-  size: number; color: string;
-  cx: string;   cy: string;    // CSS calc-compatible strings, e.g. "16vw"
-  minOp: number; maxOp: number; duration: number;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!ref.current) return;
-    const anim = ref.current.animate(
-      [{ opacity: minOp }, { opacity: maxOp }],
-      { duration, iterations: Infinity, direction: 'alternate', easing: 'ease-in-out' },
-    );
-    return () => anim.cancel();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  return (
-    <div
-      ref={ref}
-      className="shimmer-orb"
-      style={{
-        width:  size,
-        height: size,
-        left:   `calc(${cx} - ${size / 2}px)`,
-        top:    `calc(${cy} - ${size / 2}px)`,
-        borderRadius: '50%',
-        backgroundColor: color,
-        opacity: minOp,
-      }}
-    />
-  );
-}
 
 // ─── AnimatedStroke ───────────────────────────────────────────────────────────
 // Completed stroke. Pulses when unmuted; renders at 40% opacity when muted.
