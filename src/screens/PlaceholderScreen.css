@@ -5,32 +5,38 @@
   justify-content: center;
   width: 100%;
   height: 100%;
-  background: #07091a;
-  gap: 12px;
-  font-family: 'Space Mono', monospace;
+  background: var(--bg);
+  gap: 10px;
+  font-family: 'DM Sans', sans-serif;
 }
 
 .placeholder-title {
-  font-size: 13px;
-  color: #363c62;
-  letter-spacing: 3px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  letter-spacing: 2px;
+  text-transform: uppercase;
 }
 
 .placeholder-hint {
   font-size: 11px;
-  color: #252a44;
+  color: var(--muted);
 }
 
 .placeholder-back {
   margin-top: 24px;
   background: none;
-  border: none;
+  border: 1px solid var(--accent-2);
+  border-radius: 6px;
   cursor: pointer;
-  font-family: 'Space Mono', monospace;
-  font-size: 13px;
-  color: #3ed4c4;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--accent);
+  padding: 7px 16px;
+  transition: border-color 0.12s;
 }
 
 .placeholder-back:hover {
-  opacity: 0.7;
+  border-color: var(--accent);
 }

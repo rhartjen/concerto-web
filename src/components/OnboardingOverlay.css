@@ -4,12 +4,14 @@
   position: fixed;
   inset: 0;
   z-index: 100;
-  background: rgba(6, 8, 22, 0.97);
+  background: rgba(240, 242, 245, 0.95);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  font-family: 'Space Mono', monospace;
+  font-family: 'DM Sans', sans-serif;
 }
 
 /* ── Skip button ─────────────────────────────────────────────────────────── */
@@ -21,12 +23,18 @@
   background: none;
   border: none;
   cursor: pointer;
-  font-family: 'Space Mono', monospace;
-  font-size: 13px;
-  color: #30365a;
-  letter-spacing: 0.8px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  letter-spacing: 0.3px;
   padding: 12px 16px;
   margin: -12px -16px;
+  transition: color 0.12s;
+}
+
+.onboarding-skip:hover {
+  color: var(--text-primary);
 }
 
 /* ── Swipeable carousel ──────────────────────────────────────────────────── */
@@ -59,30 +67,30 @@
 .onboarding-card {
   width: 100%;
   max-width: 380px;
-  background: rgba(10, 12, 28, 0.94);
-  border-radius: 26px;
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: var(--surface);
+  border-radius: 16px;
+  border: 1px solid var(--border);
   border-top-width: 2px;
-  padding: 38px 30px 44px;
+  padding: 36px 30px 40px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 18px;
-  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.55);
+  gap: 16px;
 }
 
 .onboarding-card-title {
-  font-size: 18px;
-  letter-spacing: 0.4px;
+  font-size: 20px;
+  font-weight: 300;
+  letter-spacing: -0.2px;
   text-align: center;
 }
 
 .onboarding-card-body {
   font-size: 14px;
-  color: #41496e;
+  font-weight: 400;
+  color: var(--text-secondary);
   line-height: 22px;
   text-align: center;
-  letter-spacing: 0.1px;
   max-width: 280px;
   margin: 0;
 }
@@ -91,8 +99,8 @@
 
 .onboarding-dots {
   display: flex;
-  gap: 7px;
-  margin-top: 30px;
+  gap: 6px;
+  margin-top: 28px;
   align-items: center;
 }
 
@@ -100,31 +108,31 @@
   width: 6px;
   height: 6px;
   border-radius: 3px;
-  background: #1a2040;
+  background: var(--muted);
   transition: width 0.2s, border-radius 0.2s, background 0.2s;
 }
 
 .onboarding-dot--active {
-  width: 22px;
+  width: 20px;
   border-radius: 3px;
 }
 
 /* ── CTA button ──────────────────────────────────────────────────────────── */
 
 .onboarding-cta {
-  margin-top: 18px;
-  padding: 15px 36px;
-  border-radius: 32px;
+  margin-top: 16px;
+  padding: 12px 32px;
+  border-radius: 6px;
   border: 1px solid;
   background: transparent;
   cursor: pointer;
-  font-family: 'Space Mono', monospace;
+  font-family: 'DM Sans', sans-serif;
   font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 1.2px;
+  font-weight: 500;
+  letter-spacing: 0.3px;
   transition: opacity 0.15s;
 }
 
 .onboarding-cta:hover {
-  opacity: 0.8;
+  opacity: 0.75;
 }

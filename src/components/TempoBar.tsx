@@ -29,6 +29,8 @@ export default function TempoBar() {
 
   return (
     <div className="tempo-bar" onPointerDown={(e) => e.stopPropagation()}>
+      <span className="tempo-wordmark">Concerto</span>
+      <div className="tempo-divider" />
       <span className="tempo-bpm">{bpm}</span>
       <span className="tempo-unit">BPM</span>
       <input

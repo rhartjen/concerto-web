@@ -1,17 +1,15 @@
 .color-picker {
   position: fixed;
-  bottom: 68px; /* clears the 60px mobile panel handle */
+  bottom: 68px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 15;
   display: flex;
-  gap: 6px;
-  padding: 8px 12px;
-  background: rgba(7, 9, 26, 0.88);
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  gap: 4px;
+  padding: 7px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 32px;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
   pointer-events: auto;
 }
 
@@ -19,7 +17,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   background: none;
   border: none;
   cursor: pointer;
@@ -27,40 +25,41 @@
 }
 
 .swatch-circle {
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
-  border: 2px solid transparent;
+  border: 2px solid var(--surface);
+  outline: 1px solid transparent;
   box-sizing: border-box;
-  transition: border-color 0.15s, transform 0.15s;
+  transition: outline-color 0.12s, transform 0.12s;
   flex-shrink: 0;
 }
 
 .color-swatch--active .swatch-circle {
-  border-color: rgba(255, 255, 255, 0.85);
-  transform: scale(1.18);
+  outline-color: var(--accent);
+  transform: scale(1.14);
 }
 
 .swatch-label {
   font-size: 7px;
-  font-family: 'Space Mono', monospace;
-  letter-spacing: 0.4px;
-  color: #363c62;
-  transition: color 0.15s;
+  font-family: 'DM Mono', monospace;
+  letter-spacing: 0.3px;
+  color: var(--muted);
+  transition: color 0.12s;
   line-height: 1;
 }
 
 .color-swatch--active .swatch-label {
-  color: #d8dcf0;
+  color: var(--text-secondary);
 }
 
 /* ── Brush size controls ─────────────────────────────────────────────────── */
 
 .brush-divider {
   width: 1px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--border);
   align-self: stretch;
-  margin: 2px 4px;
+  margin: 2px 6px;
   flex-shrink: 0;
 }
 
@@ -68,7 +67,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   justify-content: center;
 }
 
@@ -80,43 +79,41 @@
   border-radius: 2px;
   background: linear-gradient(
     to right,
-    #3ED4C4 0%,
-    #3ED4C4 calc((var(--brush-pct, 15%) )),
-    #1e2448 calc((var(--brush-pct, 15%) )),
-    #1e2448 100%
+    var(--accent) 0%,
+    var(--accent) var(--brush-pct, 15%),
+    var(--border) var(--brush-pct, 15%),
+    var(--border) 100%
   );
   outline: none;
   cursor: pointer;
-  /* Allow horizontal drag to reach the browser's native range-input handler
-     even when a parent element has touch-action: none. */
   touch-action: pan-x;
 }
 
 .brush-size-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 11px;
-  height: 11px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
-  background: #3ED4C4;
+  background: var(--accent);
   cursor: pointer;
-  box-shadow: 0 0 4px rgba(62, 212, 196, 0.5);
+  border: 2px solid var(--surface);
+  box-shadow: 0 0 0 1px var(--accent);
 }
 
 .brush-size-slider::-moz-range-thumb {
-  width: 11px;
-  height: 11px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
-  border: none;
-  background: #3ED4C4;
+  border: 2px solid var(--surface);
+  background: var(--accent);
   cursor: pointer;
-  box-shadow: 0 0 4px rgba(62, 212, 196, 0.5);
+  box-shadow: 0 0 0 1px var(--accent);
 }
 
-/* Fixed-size container keeps the pill height constant regardless of dot size */
 .brush-preview-dot-wrap {
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;

@@ -104,19 +104,19 @@ interface Slide {
 
 const SLIDES: Slide[] = [
   {
-    accent: '#3ED4C4',
+    accent: '#7aafd4',
     title:  'draw to compose',
     body:   'Each mark on the canvas becomes a chord. Stroke length sets pitch, horizontal position sets octave, and orientation determines major or minor.',
     Icon:   DrawIcon,
   },
   {
-    accent: '#E8982A',
+    accent: '#8a9fc0',
     title:  'build your arrangement',
     body:   'Toggle drawings on and off to layer your progression. Lock a drawing to protect it from shuffling. Up to five voices play each cycle.',
     Icon:   ToggleIcon,
   },
   {
-    accent: '#A09CFF',
+    accent: '#a8bedb',
     title:  'export a chord sheet',
     body:   'Active chords are ordered left to right by canvas position. Tap Sheet to preview a printable chord diagram and share it as a PNG.',
     Icon:   ExportIcon,
