@@ -324,21 +324,41 @@ function UsersTab({ canvasId }: { canvasId: string | null }) {
 
   async function removeUser(u: UserRow) {
     setOpError(null);
-    // Soft-delete drawings first; deleting the user row while drawings still
-    // reference their auth UID can violate FK constraints on some schemas.
+
+    // Step 1 — soft-delete all drawings for this user. Must happen before the
+    // user row is deleted; drawings.user_id → users.id FK will reject the user
+    // delete if any drawing rows still reference that id.
     const { error: drawErr } = await admin
-      .from('drawings').update({ is_deleted: true }).eq('user_id', u.id);
+      .from('drawings')
+      .update({ is_deleted: true })
+      .eq('user_id', u.id);
+
     if (drawErr) {
       console.error('[admin] removeUser — drawings soft-delete failed:', drawErr);
-      setOpError(`Failed to remove drawings: ${drawErr.message}`);
+      setOpError(`Failed to soft-delete drawings: ${drawErr.message}`);
       return;
     }
-    const { error: userErr } = await admin.from('users').delete().eq('id', u.id);
+
+    // Step 2 — delete the user row (service-role client bypasses RLS).
+    const { error: userErr } = await admin
+      .from('users')
+      .delete()
+      .eq('id', u.id);
+
     if (userErr) {
-      console.error('[admin] removeUser — user row delete failed:', userErr);
+      // Rollback: restore drawings so the canvas stays consistent.
+      console.error('[admin] removeUser — user row delete failed, reverting drawings soft-delete:', userErr);
+      const { error: revertErr } = await admin
+        .from('drawings')
+        .update({ is_deleted: false })
+        .eq('user_id', u.id);
+      if (revertErr) {
+        console.error('[admin] removeUser — drawings revert also failed:', revertErr);
+      }
       setOpError(`Failed to remove user: ${userErr.message}`);
       return;
     }
+
     setUsers((prev) => prev.filter((x) => x.id !== u.id));
   }
 
