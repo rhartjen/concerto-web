@@ -1,9 +1,9 @@
 .canvas-container {
   position: fixed;
   inset: 0;
-  background-color: #07091a;
+  top: 48px; /* below the top control bar */
+  background: linear-gradient(160deg, var(--bg) 0%, var(--canvas-bg) 100%);
   overflow: hidden;
-  /* Disable all native touch handling so pointer / wheel events come to us */
   touch-action: none;
   overscroll-behavior: none;
   user-select: none;
@@ -12,30 +12,17 @@
 }
 
 /* ── Dot grid ─────────────────────────────────────────────────────────────── */
-/* x/y/cell/dot-r are updated imperatively in applyTransform() */
 .canvas-bg {
   position: absolute;
   inset: 0;
   pointer-events: none;
   background-image: radial-gradient(
     circle,
-    #141c3a var(--dot-r, 1.4px),
-    transparent var(--dot-r, 1.4px)
+    var(--canvas-dot) var(--dot-r, 1px),
+    transparent var(--dot-r, 1px)
   );
-  background-size: var(--grid-cell, 40px) var(--grid-cell, 40px);
+  background-size: var(--grid-cell, 24px) var(--grid-cell, 24px);
   background-position: var(--grid-x, 0px) var(--grid-y, 0px);
-}
-
-/* ── Nebula shimmer orbs ──────────────────────────────────────────────────── */
-.canvas-orbs {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-.shimmer-orb {
-  position: absolute;
-  pointer-events: none;
 }
 
 /* ── Transformed content layer ───────────────────────────────────────────── */
@@ -56,40 +43,38 @@
   pointer-events: none;
 }
 
-/* ── Drawing username label (hover / long-press) ─────────────────────────── */
+/* ── Drawing username label ───────────────────────────────────────────────── */
 .drawing-label {
   position: absolute;
   top: 0;
   left: 0;
-  background: rgba(7, 9, 26, 0.88);
-  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 6px;
   padding: 4px 9px;
-  font-family: 'Space Mono', monospace;
+  font-family: 'DM Mono', monospace;
   font-size: 10px;
-  color: #8a90b8;
-  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+  letter-spacing: 0.3px;
   white-space: nowrap;
   pointer-events: none;
   z-index: 15;
   opacity: 0;
   transition: opacity 0.15s;
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
 }
 
 /* ── Minimap ─────────────────────────────────────────────────────────────── */
 .minimap {
   position: absolute;
   bottom: 70px;
-  left: 16px; /* mobile: bottom-left, away from the centered color picker */
+  left: 16px;
   z-index: 20;
   border-radius: 6px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border);
   cursor: crosshair;
   pointer-events: auto;
-  opacity: 0.75;
+  opacity: 0.8;
   transition: opacity 0.2s;
 }
 
@@ -101,7 +86,7 @@
   .minimap {
     bottom: 16px;
     left: auto;
-    right: 16px; /* desktop: bottom-right, sidebar is on the right */
+    right: 16px;
   }
 }
 
@@ -120,47 +105,53 @@
 
 .canvas-empty-hint {
   font-size: 13px;
-  font-family: 'Space Mono', monospace;
-  color: #3ed4c4;
-  opacity: 0.38;
+  font-family: 'DM Sans', sans-serif;
+  font-weight: 300;
+  color: var(--muted);
   letter-spacing: 2px;
 }
 
 /* ── Canvas nav ───────────────────────────────────────────────────────────── */
 .canvas-nav {
   position: fixed;
-  top: 16px;
-  right: 16px;
-  z-index: 10;
+  top: 0;
+  right: 0;
+  height: 48px;
+  z-index: 11;
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: 4px;
+  padding: 0 16px;
   pointer-events: auto;
 }
 
 .canvas-nav-btn {
-  background: rgba(10, 13, 32, 0.72);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 8px;
-  padding: 6px 12px;
-  font-family: 'Space Mono', monospace;
-  font-size: 10px;
-  letter-spacing: 1.5px;
-  color: #363c62;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
   cursor: pointer;
   text-decoration: none;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  transition: color 0.15s;
+  transition: color 0.12s, border-color 0.12s;
+  display: flex;
+  align-items: center;
+  gap: 5px;
 }
 
 .canvas-nav-btn:hover {
-  color: #3ed4c4;
+  color: var(--accent);
+  border-color: var(--accent-2);
 }
 
 .canvas-nav-btn--active {
-  color: #3ed4c4;
-  border-color: rgba(62, 212, 196, 0.25);
-  background: rgba(62, 212, 196, 0.06);
+  color: var(--accent);
+  border-color: var(--accent);
+  background: rgba(122, 175, 212, 0.08);
 }
 
 /* ── Viewport mode border pulse ──────────────────────────────────────────── */
@@ -176,15 +167,13 @@
 @keyframes viewport-border-pulse {
   0%, 100% {
     box-shadow:
-      inset 0 0  30px rgba(62, 212, 196, 0.04),
-      inset 0 0   0px rgba(62, 212, 196, 0),
-      0 0 0 1px rgba(62, 212, 196, 0.18);
+      inset 0 0 30px rgba(122, 175, 212, 0.04),
+      0 0 0 1px rgba(122, 175, 212, 0.20);
   }
   50% {
     box-shadow:
-      inset 0 0  60px rgba(62, 212, 196, 0.09),
-      inset 0 0 120px rgba(62, 212, 196, 0.04),
-      0 0 0 1.5px rgba(62, 212, 196, 0.55);
+      inset 0 0 60px rgba(122, 175, 212, 0.08),
+      0 0 0 1.5px rgba(122, 175, 212, 0.50);
   }
 }
 
@@ -194,9 +183,7 @@
     right: 280px;
   }
 
-  /* Move nav to top-left so it doesn't overlap the sidebar */
   .canvas-nav {
-    right: auto;
-    left: 16px;
+    right: 280px;
   }
 }

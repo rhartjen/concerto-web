@@ -1,65 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Volume2, VolumeX, Eye, EyeOff, X } from 'lucide-react';
 import { useDrawingsStore, type DrawingObject } from '../store/drawingsStore';
 import { useSessionStore } from '../store/sessionStore';
 import { useViewportStore } from '../store/useViewportStore';
 import { setDrawingVolume, removeDrawingGain } from '../utils/audioEngine';
 import { panToDrawing } from '../utils/canvasNavigation';
 import './DrawingPanel.css';
-
-// ─── Icons ────────────────────────────────────────────────────────────────────
-
-function SpeakerOn({ color }: { color: string }) {
-  return (
-    <svg width={16} height={16} viewBox="0 0 16 16" fill="none">
-      <path
-        d="M3 5.5H5.5L9 3V13L5.5 10.5H3V5.5Z"
-        stroke={color} strokeWidth="1.3" strokeLinejoin="round"
-      />
-      <path
-        d="M11 5.5C11.8 6.2 12.3 7.0 12.3 8C12.3 9.0 11.8 9.8 11 10.5"
-        stroke={color} strokeWidth="1.3" strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function SpeakerOff({ color }: { color: string }) {
-  return (
-    <svg width={16} height={16} viewBox="0 0 16 16" fill="none">
-      <path
-        d="M3 5.5H5.5L9 3V13L5.5 10.5H3V5.5Z"
-        stroke={color} strokeWidth="1.3" strokeLinejoin="round"
-      />
-      <line x1="11" y1="5.5" x2="13.5" y2="10.5" stroke={color} strokeWidth="1.3" strokeLinecap="round" />
-      <line x1="13.5" y1="5.5" x2="11" y2="10.5" stroke={color} strokeWidth="1.3" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function EyeOpen({ color }: { color: string }) {
-  return (
-    <svg width={16} height={16} viewBox="0 0 16 16" fill="none">
-      <path
-        d="M1.5 8C1.5 8 4 3.5 8 3.5C12 3.5 14.5 8 14.5 8C14.5 8 12 12.5 8 12.5C4 12.5 1.5 8 1.5 8Z"
-        stroke={color} strokeWidth="1.3" strokeLinejoin="round"
-      />
-      <circle cx="8" cy="8" r="2" stroke={color} strokeWidth="1.3" />
-    </svg>
-  );
-}
-
-function EyeClosed({ color }: { color: string }) {
-  return (
-    <svg width={16} height={16} viewBox="0 0 16 16" fill="none">
-      <path
-        d="M1.5 8C1.5 8 4 3.5 8 3.5C12 3.5 14.5 8 14.5 8"
-        stroke={color} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"
-      />
-      <path d="M3 11L13 5" stroke={color} strokeWidth="1.3" strokeLinecap="round" />
-    </svg>
-  );
-}
 
 // ─── AnimatedCardInfo ─────────────────────────────────────────────────────────
 // Fades in the label+note pair when sound mapping changes (e.g. after shuffle).
@@ -124,18 +71,18 @@ function OwnCard({ drawing, onNavigate }: { drawing: DrawingObject; onNavigate: 
           title={muted ? 'Unmute' : 'Mute'}
         >
           {muted
-            ? <SpeakerOff color="#ff6b6b" />
-            : <SpeakerOn  color="#3ED4C4" />
+            ? <VolumeX size={14} color="var(--danger)" strokeWidth={1.5} />
+            : <Volume2 size={14} color="var(--accent)" strokeWidth={1.5} />
           }
         </button>
 
         <button
-          className="card-icon-btn card-delete"
+          className="card-icon-btn card-icon-btn--danger"
           onClick={() => { removeDrawingGain(drawing.id); remove(drawing.id); }}
           aria-label="Delete"
           title="Delete"
         >
-          ✕
+          <X size={13} strokeWidth={1.5} />
         </button>
       </div>
 
@@ -190,8 +137,8 @@ function CanvasCard({ drawing, onNavigate }: { drawing: DrawingObject; onNavigat
           title={muted ? 'Unmute' : 'Mute'}
         >
           {muted
-            ? <SpeakerOff color="#ff6b6b" />
-            : <SpeakerOn  color="#3ED4C4" />
+            ? <VolumeX size={14} color="var(--danger)" strokeWidth={1.5} />
+            : <Volume2 size={14} color="var(--accent)" strokeWidth={1.5} />
           }
         </button>
 
@@ -202,8 +149,8 @@ function CanvasCard({ drawing, onNavigate }: { drawing: DrawingObject; onNavigat
           title={hidden ? 'Show on canvas' : 'Hide from canvas'}
         >
           {hidden
-            ? <EyeClosed color="#4a5278" />
-            : <EyeOpen   color="#4a5278" />
+            ? <EyeOff size={14} color="var(--muted)" strokeWidth={1.5} />
+            : <Eye    size={14} color="var(--text-secondary)" strokeWidth={1.5} />
           }
         </button>
       </div>
@@ -315,7 +262,7 @@ export default function DrawingPanel() {
             )}
             {canShuffle && (
               <button
-                className={`panel-btn panel-btn--teal${shuffling ? ' panel-btn--bounce' : ''}`}
+                className={`panel-btn panel-btn--accent${shuffling ? ' panel-btn--bounce' : ''}`}
                 onClick={(e) => { e.stopPropagation(); handleShuffle(); }}
               >
                 Shuffle

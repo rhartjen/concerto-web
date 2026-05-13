@@ -24,7 +24,7 @@ import './Canvas.css';
 // ─── Constants ───────────────────────────────────────────────────────────────
 const MIN_SCALE        = 0.25;
 const MAX_SCALE        = 4;
-const GRID_SIZE        = 40;
+const GRID_SIZE        = 24;
 const MIN_DIST_SQ      = 4;    // skip micro-movements to avoid path bloat
 const CYCLE_MS         = 2500; // visual pulse period for AnimatedStroke only
 const MINIMAP_SIZE     = 150;
@@ -230,7 +230,7 @@ function CanvasEmptyState() {
         <path
           d="M 4 13 Q 20 4 40 13 Q 60 22 76 13"
           fill="none"
-          stroke="#3ED4C4"
+          stroke="#7aafd4"
           strokeWidth={2.5}
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -264,7 +264,7 @@ const Minimap = React.memo(function Minimap({
         viewBox={`0 0 ${MINIMAP_SIZE} ${MINIMAP_SIZE}`}
         onClick={onMinimapClick}
       >
-        <rect x={0} y={0} width={MINIMAP_SIZE} height={MINIMAP_SIZE} fill="#07091a" />
+        <rect x={0} y={0} width={MINIMAP_SIZE} height={MINIMAP_SIZE} fill="#e8ebf0" />
         <g transform={`scale(${MS})`}>
           {drawings.map((d) => {
             if (d.userId !== currentUserId && hiddenIds.has(d.id)) return null;
@@ -290,8 +290,8 @@ const Minimap = React.memo(function Minimap({
           y={0}
           width={0}
           height={0}
-          fill="rgba(62, 212, 196, 0.08)"
-          stroke="#3ED4C4"
+          fill="rgba(122, 175, 212, 0.10)"
+          stroke="#7aafd4"
           strokeWidth={1}
         />
       </svg>
@@ -423,7 +423,7 @@ export default function Canvas({ children }: CanvasProps) {
 
     if (bgRef.current) {
       const cell = GRID_SIZE * scaleRef.current;
-      const dotR = clamp(1.4 * scaleRef.current, 1.0, 3.0);
+      const dotR = clamp(1.0 * scaleRef.current, 0.8, 2.5);
       const gx   = ((txRef.current % cell) + cell) % cell;
       const gy   = ((tyRef.current % cell) + cell) % cell;
       bgRef.current.style.setProperty('--grid-cell', `${cell}px`);
@@ -935,13 +935,6 @@ export default function Canvas({ children }: CanvasProps) {
       {/* Dot grid — screen-fixed, pans via CSS custom props */}
       <div ref={bgRef} className="canvas-bg" />
 
-      {/* Nebula shimmer */}
-      <div className="canvas-orbs">
-        <ShimmerOrb size={420} color="#3ED4C4" cx="16vw" cy="26vh" minOp={0.022} maxOp={0.068} duration={7800}  />
-        <ShimmerOrb size={280} color="#E8982A" cx="84vw" cy="68vh" minOp={0.018} maxOp={0.055} duration={10200} />
-        <ShimmerOrb size={500} color="#8B8AFF" cx="54vw" cy="10vh" minOp={0.012} maxOp={0.045} duration={12600} />
-        <ShimmerOrb size={200} color="#D46E88" cx="70vw" cy="44vh" minOp={0.015} maxOp={0.048} duration={9000}  />
-      </div>
 
       {/* Canvas content — shifted and scaled with pan/zoom */}
       <div ref={contentRef} className="canvas-content">
