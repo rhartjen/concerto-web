@@ -325,17 +325,18 @@ function UsersTab({ canvasId }: { canvasId: string | null }) {
   async function removeUser(u: UserRow) {
     setOpError(null);
 
-    // Step 1 — soft-delete all drawings for this user. Must happen before the
-    // user row is deleted; drawings.user_id → users.id FK will reject the user
-    // delete if any drawing rows still reference that id.
+    // Step 1 — hard-delete all drawings for this user. Must happen before the
+    // user row is deleted. Soft-delete (is_deleted = true) is not sufficient
+    // because the rows still physically exist with user_id set, so the FK
+    // constraint drawings_user_id_fkey still fires on the user delete.
     const { error: drawErr } = await admin
       .from('drawings')
-      .update({ is_deleted: true })
+      .delete()
       .eq('user_id', u.id);
 
     if (drawErr) {
-      console.error('[admin] removeUser — drawings soft-delete failed:', drawErr);
-      setOpError(`Failed to soft-delete drawings: ${drawErr.message}`);
+      console.error('[admin] removeUser — drawings delete failed:', drawErr);
+      setOpError(`Failed to delete drawings: ${drawErr.message}`);
       return;
     }
 
@@ -346,15 +347,7 @@ function UsersTab({ canvasId }: { canvasId: string | null }) {
       .eq('id', u.id);
 
     if (userErr) {
-      // Rollback: restore drawings so the canvas stays consistent.
-      console.error('[admin] removeUser — user row delete failed, reverting drawings soft-delete:', userErr);
-      const { error: revertErr } = await admin
-        .from('drawings')
-        .update({ is_deleted: false })
-        .eq('user_id', u.id);
-      if (revertErr) {
-        console.error('[admin] removeUser — drawings revert also failed:', revertErr);
-      }
+      console.error('[admin] removeUser — user row delete failed:', userErr);
       setOpError(`Failed to remove user: ${userErr.message}`);
       return;
     }
