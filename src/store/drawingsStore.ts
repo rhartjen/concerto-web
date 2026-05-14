@@ -225,14 +225,12 @@ export const useDrawingsStore = create<DrawingsState>((set, get) => ({
       return;
     }
 
-    // Optimistic removal — remove from store immediately, then soft-delete in DB.
+    // Optimistic removal — remove from store immediately, then hard-delete in DB.
     set((state) => ({
       drawings: state.drawings.filter((d) => d.id !== id),
     }));
 
     void (async () => {
-      // Refresh session before writing — catches expired anonymous tokens before
-      // they produce opaque RLS errors.
       const session = await ensureValidSession();
       if (!session) {
         useDrawingsStore.setState((s) => ({ drawings: [...s.drawings, drawing] }));
@@ -240,58 +238,22 @@ export const useDrawingsStore = create<DrawingsState>((set, get) => ({
         return;
       }
 
-      // Confirm auth.uid() still matches drawing.userId. A mismatch means the
-      // anonymous session rotated and the new token owns a different user row.
       const authUid = session.userId;
-      console.log('[drawings] soft-delete auth check', {
-        authUid,
-        drawingUserId: drawing.userId,
-        storeUserId:   userId,
-        match:         authUid === drawing.userId,
-      });
-
       if (authUid !== drawing.userId) {
-        console.error('[drawings] soft-delete blocked — auth.uid() does not match drawing.userId (session rotated?)');
         useDrawingsStore.setState((s) => ({ drawings: [...s.drawings, drawing] }));
-        useToastStore.getState().showToast('Delete failed: user_id mismatch — session may have rotated');
+        useToastStore.getState().showToast('Delete failed: session mismatch — reload and try again');
         return;
       }
 
-      // Decode the JWT that will be sent with this request so we can confirm
-      // auth.uid() will be non-null at the DB level.
-      const { data: sessionSnap } = await supabase.auth.getSession();
-      const rawToken = sessionSnap.session?.access_token;
-      let jwtRole: string | null = null;
-      let jwtSub:  string | null = null;
-      let jwtExp:  string | null = null;
-      if (rawToken) {
-        try {
-          const claims = JSON.parse(atob(rawToken.split('.')[1]));
-          jwtRole = claims.role  ?? null;
-          jwtSub  = claims.sub   ?? null;
-          jwtExp  = claims.exp   ? new Date(claims.exp * 1000).toISOString() : null;
-        } catch { /* ignore malformed JWT */ }
-      }
-      console.log('[drawings] JWT state before update', {
-        tokenPresent: !!rawToken,
-        jwtRole,           // must be "authenticated", not "anon"
-        jwtSub,            // must equal drawing.userId
-        jwtExp,
-        authUid,
-        drawingUserId: drawing.userId,
-        subMatchesDrawing: jwtSub === drawing.userId,
-      });
-
       const { error } = await supabase
         .from('drawings')
-        .update({ is_deleted: true })
+        .delete()
         .eq('id', id)
         .eq('user_id', authUid);
 
       if (!error) return;
 
-      // Rollback and surface the exact Supabase error so the root cause is visible.
-      console.error('[drawings] soft-delete failed', {
+      console.error('[drawings] delete failed', {
         code:    error.code,
         message: error.message,
         details: error.details,
@@ -425,14 +387,6 @@ async function startSync(canvasId: string): Promise<void> {
         if (payload.eventType === 'UPDATE') {
           const row = payload.new as unknown as Tables<'drawings'>;
 
-          if (row.is_deleted) {
-            // Soft-delete — remove from store regardless of ownership.
-            useDrawingsStore.setState((state) => ({
-              drawings: state.drawings.filter((d) => d.id !== row.id),
-            }));
-            return;
-          }
-
           // Another user updated their drawing (e.g. stroke merge).
           // Preserve local client-only state (isActive, isLocked, isMuted).
           if (row.user_id !== userId) {
@@ -446,6 +400,16 @@ async function startSync(canvasId: string): Promise<void> {
                   isMuted:  d.isMuted,
                 };
               }),
+            }));
+          }
+        }
+
+        if (payload.eventType === 'DELETE') {
+          // Hard-delete from another client — remove from store.
+          const old = payload.old as { id?: string };
+          if (old.id) {
+            useDrawingsStore.setState((state) => ({
+              drawings: state.drawings.filter((d) => d.id !== old.id),
             }));
           }
         }

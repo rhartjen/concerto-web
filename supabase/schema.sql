@@ -124,14 +124,17 @@ CREATE POLICY "drawings_insert_own"
   WITH CHECK (user_id = auth.uid());
 
 -- drawings — update: only non-deleted rows you own; user_id cannot be changed
--- (soft-delete is an UPDATE setting is_deleted = true, covered by this policy)
 CREATE POLICY "drawings_update_own"
   ON drawings
   FOR UPDATE
   USING     (user_id = auth.uid() AND is_deleted = false)
   WITH CHECK (user_id = auth.uid());
 
--- No DELETE policy — physical deletes are not permitted from the client.
+-- drawings — delete: only your own rows (client hard-deletes, no soft-delete)
+CREATE POLICY "drawings_delete_own"
+  ON drawings
+  FOR DELETE
+  USING (user_id = auth.uid());
 
 
 -- shared_snapshots — public read
