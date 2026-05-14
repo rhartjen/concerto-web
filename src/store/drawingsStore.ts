@@ -257,6 +257,31 @@ export const useDrawingsStore = create<DrawingsState>((set, get) => ({
         return;
       }
 
+      // Decode the JWT that will be sent with this request so we can confirm
+      // auth.uid() will be non-null at the DB level.
+      const { data: sessionSnap } = await supabase.auth.getSession();
+      const rawToken = sessionSnap.session?.access_token;
+      let jwtRole: string | null = null;
+      let jwtSub:  string | null = null;
+      let jwtExp:  string | null = null;
+      if (rawToken) {
+        try {
+          const claims = JSON.parse(atob(rawToken.split('.')[1]));
+          jwtRole = claims.role  ?? null;
+          jwtSub  = claims.sub   ?? null;
+          jwtExp  = claims.exp   ? new Date(claims.exp * 1000).toISOString() : null;
+        } catch { /* ignore malformed JWT */ }
+      }
+      console.log('[drawings] JWT state before update', {
+        tokenPresent: !!rawToken,
+        jwtRole,           // must be "authenticated", not "anon"
+        jwtSub,            // must equal drawing.userId
+        jwtExp,
+        authUid,
+        drawingUserId: drawing.userId,
+        subMatchesDrawing: jwtSub === drawing.userId,
+      });
+
       const { error } = await supabase
         .from('drawings')
         .update({ is_deleted: true })
