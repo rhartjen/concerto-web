@@ -628,7 +628,7 @@ export default function Canvas({ children }: CanvasProps) {
     }
 
     function onPointerDown(e: PointerEvent) {
-      if ((e.target as Element).closest?.('.color-picker, .canvas-nav, .tempo-bar')) return;
+      if ((e.target as Element).closest?.('.color-picker, .canvas-nav, .tempo-bar, .tempo-popover')) return;
 
       // Any new pointer interaction dismisses the current label.
       hideLabel();

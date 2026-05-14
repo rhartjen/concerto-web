@@ -1,3 +1,5 @@
+/* ── Top bar ─────────────────────────────────────────────────────────────── */
+
 .tempo-bar {
   position: fixed;
   top: 0;
@@ -21,7 +23,6 @@
   color: var(--text-secondary);
   letter-spacing: 2px;
   text-transform: uppercase;
-  margin-right: 4px;
 }
 
 .tempo-divider {
@@ -31,32 +32,90 @@
   flex-shrink: 0;
 }
 
-.tempo-bpm {
+/* ── BPM pill button ─────────────────────────────────────────────────────── */
+
+.tempo-pill {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
   font-family: 'DM Mono', monospace;
   font-size: 13px;
   font-weight: 500;
-  color: var(--text-primary);
-  min-width: 30px;
-  text-align: right;
+  color: var(--text-secondary);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
 }
 
-.tempo-unit {
-  font-family: 'DM Mono', monospace;
+.tempo-pill:hover,
+.tempo-pill--open {
+  color: var(--accent);
+  border-color: var(--accent-2);
+  background: rgba(122, 175, 212, 0.06);
+}
+
+.tempo-pill-unit {
   font-size: 9px;
+  letter-spacing: 1px;
+  opacity: 0.7;
+}
+
+/* ── Popover card ────────────────────────────────────────────────────────── */
+
+.tempo-popover {
+  position: fixed;
+  z-index: 50;
+  width: 220px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px 16px 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 4px 20px rgba(42, 45, 53, 0.08);
+}
+
+.tempo-popover-readout {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.tempo-popover-value {
+  font-family: 'DM Mono', monospace;
+  font-size: 40px;
+  font-weight: 500;
+  color: var(--text-primary);
+  line-height: 1;
+  letter-spacing: -1px;
+}
+
+.tempo-popover-unit {
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
   color: var(--text-secondary);
   letter-spacing: 1px;
 }
 
-/* ── Slider ─────────────────────────────────────────────────────────────── */
+/* ── Slider (used inside popover) ────────────────────────────────────────── */
+
 .tempo-slider {
   -webkit-appearance: none;
   appearance: none;
-  width: 110px;
+  width: 100%;
   height: 3px;
   background: var(--border);
   border-radius: 2px;
   outline: none;
   cursor: pointer;
+  /* needed because the popover is a DOM child of canvas-container
+     which has touch-action: none — let the thumb be dragged horizontally */
+  touch-action: pan-x;
 }
 
 .tempo-slider::-webkit-slider-thumb {
@@ -85,19 +144,21 @@
   box-shadow: 0 0 0 1px var(--accent);
 }
 
-/* ── Tap button ─────────────────────────────────────────────────────────── */
+/* ── Tap button ──────────────────────────────────────────────────────────── */
+
 .tempo-tap {
   background: none;
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 4px 9px;
+  padding: 6px 20px;
   font-family: 'DM Sans', sans-serif;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.5px;
   color: var(--text-secondary);
   cursor: pointer;
   transition: color 0.12s, border-color 0.12s;
+  width: 100%;
 }
 
 .tempo-tap:hover {
